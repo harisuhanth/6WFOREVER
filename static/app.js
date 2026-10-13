@@ -1,38 +1,952 @@
-const $=id=>document.getElementById(id);
-const FLAGS=["🏳️","🇸🇬","🇮🇳","🇺🇸","🇬🇧","🇨🇦","🇦🇺","🇯🇵","🇰🇷","🇨🇳","🇲🇾","🇮🇩","🇵🇭","🇹🇭","🇫🇷","🇩🇪","🇧🇷","🇳🇿","🇵🇰","🇱🇰","🇳🇵","🇧🇩","🇿🇦","🇦🇪","🇳🇬","🇺🇦","🇹🇷","🇮🇹","🇪🇸","🇲🇽","🇪🇬"];
-let chats=[],activeChat=null,lastId=0,users=[],myFlag="🏳️",pollBusy=false,typingLast=0;
-let pc=null,localStream=null,callPeer=null,callCid=null,signalCursor=0,callMode="video",pendingOffer=null,iceQueue=[];
-async function api(path,opts={}){const r=await fetch(path,{...opts,headers:{...(opts.body instanceof FormData?{}:{"Content-Type":"application/json"}),...(opts.headers||{})}});let d={};try{d=await r.json()}catch(e){}if(r.status===401){location.href="/login";throw Error("Please log in again.")}if(!r.ok)throw Error(d.error||"Request failed.");return d}
-function toast(s){$("toast").textContent=s;$("toast").classList.add("show");setTimeout(()=>$("toast").classList.remove("show"),2600)}
-function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function time(s){let d=new Date(s);return isNaN(d)? "":d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
-async function refreshChats(){if(pollBusy)return;pollBusy=true;try{chats=await api("/api/conversations");renderChats();if(activeChat){let c=chats.find(x=>x.id===activeChat.id);if(c){activeChat=c;$("chatTitle").textContent=c.title;$("chatSubtitle").textContent=c.subtitle}}}catch(e){}finally{pollBusy=false}}
-function renderChats(){let f=$("searchChats").value.toLowerCase();let a=chats.filter(c=>(c.title+c.last_message).toLowerCase().includes(f));$("chatList").innerHTML=a.length?a.map(c=>`<button class="chat-item ${activeChat?.id===c.id?"selected":""}" data-id="${c.id}"><span class="avatar ${c.is_group?"group-avatar":""}">${esc(c.title.slice(0,1).toUpperCase())}</span><span class="chat-item-copy"><strong>${esc(c.title)}</strong><span class="chat-preview">${esc(c.last_sender?c.last_sender+": ":"")}${esc(c.last_message)}</span></span></button>`).join(""):`<div class="empty-list">${f?"No matching chats.":"No chats yet. Start a new chat."}</div>`;$("chatList").querySelectorAll("[data-id]").forEach(b=>b.onclick=()=>openChat(+b.dataset.id))}
-function msgHtml(m){let attachment=m.attachment?(m.attachment_type==="image"?`<a href="${esc(m.attachment)}" target="_blank" rel="noopener"><img class="attachment-image" src="${esc(m.attachment)}" loading="lazy" alt="Shared image"></a>`:`<audio controls preload="none" src="${esc(m.attachment)}"></audio>`):"";let own=m.own;return `<div class="message-row ${own?"own":""}" data-mid="${m.id}">${!own?`<span class="message-sender">${esc(m.sender)}</span>`:""}<div class="bubble">${m.deleted?'<i>This message was deleted</i>':`${esc(m.body).replace(/\n/g,"<br>")}${attachment}`}<span class="message-time">${m.edited?"edited · ":""}${time(m.created_at)} ${own?(m.read?"✓✓":"✓"):""}</span></div>${own&&!m.deleted?`<div class="message-tools"><button data-edit="${m.id}" data-body="${esc(m.body)}">Edit</button><button data-delete="${m.id}">Delete</button></div>`:""}</div>`}
-async function loadMessages(initial=false){if(!activeChat)return;let id=activeChat.id;try{let ms=await api(`/api/conversations/${id}/messages?after=${initial?0:lastId}`);if(!activeChat||activeChat.id!==id)return;if(initial){$("messages").innerHTML="";lastId=0}if(ms.length){$("messages").insertAdjacentHTML("beforeend",ms.map(msgHtml).join(""));lastId=Math.max(lastId,...ms.map(x=>x.id));$("messages").scrollTop=$("messages").scrollHeight;wireMessageTools()}else if(initial)$("messages").innerHTML='<div class="empty-messages">✦<strong>Start the conversation</strong><p>Say hello to get things going.</p></div>';refreshChats()}catch(e){}}
-function wireMessageTools(){$("messages").querySelectorAll("[data-edit]").forEach(b=>b.onclick=async()=>{let body=prompt("Edit your message:",b.dataset.body);if(body===null)return;try{await api(`/api/messages/${b.dataset.edit}`,{method:"PATCH",body:JSON.stringify({body})});await reloadCurrent()}catch(e){toast(e.message)}});$("messages").querySelectorAll("[data-delete]").forEach(b=>b.onclick=async()=>{if(!confirm("Delete this message for everyone in this chat?"))return;try{await api(`/api/messages/${b.dataset.delete}`,{method:"DELETE"});await reloadCurrent()}catch(e){toast(e.message)}})}
-async function reloadCurrent(){if(!activeChat)return;lastId=0;$("messages").innerHTML="";await loadMessages(true)}
-async function openChat(id){activeChat=chats.find(c=>c.id===id);if(!activeChat)return;lastId=0;$("welcome").classList.add("hidden");$("chatView").classList.remove("hidden");$("chatTitle").textContent=activeChat.title;$("chatSubtitle").textContent=activeChat.subtitle;$("chatAvatar").textContent=activeChat.title.slice(0,1).toUpperCase();await loadMessages(true);$("messageInput").focus()}
-async function loadUsers(){users=await api("/api/users");let row=u=>`<button class="user-option" data-user="${u.id}"><span class="avatar">${esc(u.flag)}</span><span><strong>${esc(u.username)}</strong><small>${u.online?"● Online":"Last seen recently"}</small></span><span class="option-arrow">›</span></button>`;$("userList").innerHTML=users.length?users.map(row).join(""):'<div class="empty-list">Ask a friend to register first.</div>';$("groupUsers").innerHTML=users.map(u=>`<label class="user-option"><span class="avatar">${esc(u.flag)}</span><span><strong>${esc(u.username)}</strong><small>${u.online?"Online":"Offline"}</small></span><input type="checkbox" value="${u.id}"></label>`).join("");$("userList").querySelectorAll("[data-user]").forEach(b=>b.onclick=async()=>{try{let r=await api("/api/direct",{method:"POST",body:JSON.stringify({user_id:+b.dataset.user})});$("newChatDialog").close();await refreshChats();await openChat(r.conversation.id)}catch(e){toast(e.message)}})}
-$("newChatBtn").onclick=async()=>{try{await loadUsers();$("newChatDialog").showModal()}catch(e){toast(e.message)}};$("newGroupBtn").onclick=async()=>{await loadUsers();$("groupDialog").showModal()};$("closeGroup").onclick=()=>$("groupDialog").close();document.querySelectorAll(".close-dialog").forEach(b=>b.onclick=()=>b.closest("dialog").close());
-$("groupForm").onsubmit=async e=>{e.preventDefault();try{let r=await api("/api/groups",{method:"POST",body:JSON.stringify({name:$("groupName").value,user_ids:[...$("groupUsers").querySelectorAll("input:checked")].map(x=>+x.value)})});$("groupDialog").close();await refreshChats();await openChat(r.conversation.id);toast("Group created")}catch(e){toast(e.message)}};
-$("messageForm").onsubmit=async e=>{e.preventDefault();if(!activeChat)return;let body=$("messageInput").value.trim(),file=$("fileInput").files[0];if(!body&&!file)return;let form=new FormData();form.append("body",body);if(file)form.append("file",file);try{await api(`/api/conversations/${activeChat.id}/messages`,{method:"POST",body:form});$("messageInput").value="";$("fileInput").value="";await loadMessages(false)}catch(e){toast(e.message)}};
-$("messageInput").onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("messageForm").requestSubmit()}};$("messageInput").oninput=()=>{typingLast=Date.now();$("typingStatus").textContent="Typing…";setTimeout(()=>{if(Date.now()-typingLast>1600)$("typingStatus").textContent=""},1700)};
-$("emojiBtn").onclick=()=>{let emojis=["😀","😂","🥹","😍","😎","😭","👍","👎","❤️","🔥","🎉","🙏","🤔","💀","✨","😴","🙌","🤝","💚","😡"];let chosen=prompt("Choose an emoji by number:\n"+emojis.map((e,i)=>`${i+1}. ${e}`).join("  "));let n=Number(chosen);if(n>=1&&n<=emojis.length){$("messageInput").value+=emojis[n-1];$("messageInput").focus()}};
-async function profile(){let m=await api("/api/me");myFlag=m.flag;$("myFlag").textContent=myFlag;$("myAvatar").textContent=myFlag;$("flagGrid").innerHTML=FLAGS.map(f=>`<button class="flag-choice ${f===myFlag?"active":""}" data-flag="${f}">${f}</button>`).join("");$("flagGrid").querySelectorAll("[data-flag]").forEach(b=>b.onclick=async()=>{try{let r=await api("/api/flag",{method:"POST",body:JSON.stringify({flag:b.dataset.flag})});myFlag=r.flag;$("myFlag").textContent=myFlag;$("myAvatar").textContent=myFlag;$("settingsDialog").close();toast("Flag updated!");await refreshChats()}catch(e){toast(e.message)}})}
-$("settingsBtn").onclick=async()=>{try{await profile();$("settingsDialog").showModal()}catch(e){toast(e.message)}};
-$("tradeBtn").onclick=async()=>{await loadUsers();await loadTrades();$("tradeDialog").showModal()};
-async function loadTrades(){let trades=await api("/api/trades");$("tradeCreate").innerHTML=users.map(u=>`<div class="trade-user"><span>${esc(u.flag)} ${esc(u.username)}</span><button class="secondary" data-trade="${u.id}">Offer swap</button></div>`).join("")||'<p class="tiny">No friends to trade with yet.</p>';$("tradeCreate").querySelectorAll("[data-trade]").forEach(b=>b.onclick=async()=>{try{await api("/api/trades",{method:"POST",body:JSON.stringify({to_user_id:+b.dataset.trade})});toast("Trade offer sent");await loadTrades()}catch(e){toast(e.message)}});$("tradeList").innerHTML=trades.length?trades.map(t=>`<div class="trade-card"><div><strong>${t.incoming?"From "+esc(t.from):"To "+esc(t.to)}</strong><p>${esc(t.offered_flag)} ⇄ ${esc(t.requested_flag)} · ${esc(t.status)}</p></div>${t.incoming&&t.status==="pending"?`<button class="primary" data-accept="${t.id}">Accept</button><button class="secondary" data-decline="${t.id}">Decline</button>`:""}</div>`).join(""):'<div class="empty-list">No trade requests yet.</div>';$("tradeList").querySelectorAll("[data-accept],[data-decline]").forEach(b=>b.onclick=async()=>{let id=b.dataset.accept||b.dataset.decline,action=b.dataset.accept?"accept":"decline";try{await api(`/api/trades/${id}`,{method:"POST",body:JSON.stringify({action})});toast(action==="accept"?"Flags swapped!":"Trade declined");await profile();await loadTrades()}catch(e){toast(e.message);await loadTrades()}})}
-if(window.IS_ADMIN){$("adminBtn").onclick=async()=>{try{let a=await api("/api/admin/users");$("adminList").innerHTML=a.map(u=>`<div class="trade-user"><span>${esc(u.flag)} ${esc(u.username)} ${u.id===1?"":""}</span>${u.username!==window.CURRENT_USERNAME?`<button class="secondary" data-remove="${u.id}">Remove</button>`:"<small>You</small>"}</div>`).join("");$("adminList").querySelectorAll("[data-remove]").forEach(b=>b.onclick=async()=>{if(!confirm("Remove this account?"))return;try{await api(`/api/admin/users/${b.dataset.remove}`,{method:"DELETE"});toast("Account removed");b.closest(".trade-user").remove()}catch(e){toast(e.message)}});$("adminDialog").showModal()}catch(e){toast(e.message)}}}
-async function presence(){try{await api("/api/heartbeat",{method:"POST",body:"{}"})}catch(e){}}
-let callPollTimer=null;
-async function setupCall(peer,mode,incoming=false){callPeer=peer;callMode=mode;callCid=activeChat?.id; if(!callCid)throw Error("Open a direct or group chat first.");pc=new RTCPeerConnection({iceServers:[{urls:"stun:stun.l.google.com:19302"}]});pc.ontrack=e=>{$("remoteVideo").srcObject=e.streams[0]};pc.onicecandidate=e=>{if(e.candidate)sendSignal("ice",e.candidate)};pc.onconnectionstatechange=()=>{$("callStatus").textContent=pc.connectionState};localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:mode==="video"});localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));$("localVideo").srcObject=localStream;$("localVideo").style.display=mode==="video"?"block":"none";$("remoteVideo").style.display=mode==="video"?"block":"none";$("callTitle").textContent=`${mode==="video"?"Video":"Voice"} call · ${peer.username}`;$("callStatus").textContent=incoming?"Incoming call":"Calling…";$("callDialog").showModal();if(!incoming){let offer=await pc.createOffer();await pc.setLocalDescription(offer);await sendSignal("offer",pc.localDescription)}}
-async function sendSignal(kind,payload){if(!callPeer||!callCid)return;await api("/api/call-signal",{method:"POST",body:JSON.stringify({conversation_id:callCid,to_user_id:callPeer.id,kind,payload})})}
-async function stopCall(signal=true){if(signal&&callPeer)try{await sendSignal("hangup",{})}catch(e){}if(pc){pc.close();pc=null}if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null}callPeer=null;callCid=null;pendingOffer=null;$("callDialog").close();$("remoteVideo").srcObject=null;$("localVideo").srcObject=null}
-$("callBtn").onclick=async()=>{try{if(!activeChat||activeChat.is_group){toast("Calls currently work in direct chats only.");return}let other=users.find(u=>u.username===activeChat.title);if(!other){await loadUsers();other=users.find(u=>u.username===activeChat.title)}if(!other)throw Error("Friend not found.");await setupCall(other,"video")}catch(e){toast("Call unavailable: "+e.message)}};
-$("voiceOnlyBtn").onclick=async()=>{try{await stopCall(false);let other=users.find(u=>u.username===activeChat?.title);if(other)await setupCall(other,"voice")}catch(e){toast(e.message)}};
-$("hangupBtn").onclick=()=>stopCall(true);$("acceptCallBtn").onclick=async()=>{try{await setupCall(pendingOffer.peer,pendingOffer.mode,true);await pc.setRemoteDescription(pendingOffer.offer);for(const c of iceQueue)await pc.addIceCandidate(c);iceQueue=[];let a=await pc.createAnswer();await pc.setLocalDescription(a);await sendSignal("answer",pc.localDescription);$("acceptCallBtn").hidden=true;$("rejectCallBtn").hidden=true}catch(e){toast("Could not accept call: "+e.message);stopCall(false)}};
-$("rejectCallBtn").onclick=async()=>{try{await api("/api/call-signal",{method:"POST",body:JSON.stringify({conversation_id:pendingOffer.cid,to_user_id:pendingOffer.peer.id,kind:"reject",payload:{}})})}catch(e){}await stopCall(false)};
-async function pollSignals(){try{let rows=await api(`/api/call-signal?after=${signalCursor}`);for(let s of rows){signalCursor=Math.max(signalCursor,s.id);if(s.kind==="offer"){let c=chats.find(c=>c.id===s.conversation_id);if(!c)continue;let peer=users.find(u=>u.id===s.from_user_id);if(!peer){await loadUsers();peer=users.find(u=>u.id===s.from_user_id)}if(!peer)continue;pendingOffer={peer,mode:s.payload?.type==="offer"?"video":"voice",offer:s.payload,cid:s.conversation_id};$("callTitle").textContent=`Incoming call · ${peer.username}`;$("callStatus").textContent="Accept to connect. Allow microphone/camera access."; $("acceptCallBtn").hidden=false;$("rejectCallBtn").hidden=false;$("callDialog").showModal()}else if(s.kind==="answer"&&pc){await pc.setRemoteDescription(s.payload);for(const c of iceQueue)await pc.addIceCandidate(c);iceQueue=[]}else if(s.kind==="ice"&&pc){try{if(pc.remoteDescription)await pc.addIceCandidate(s.payload);else iceQueue.push(s.payload)}catch(e){}}else if(["hangup","reject"].includes(s.kind)){toast(s.kind==="reject"?"Call declined":"Call ended");await stopCall(false)}}}catch(e){}}
-async function start(){try{await profile();await refreshChats();await loadUsers()}catch(e){}setInterval(refreshChats,3500);setInterval(()=>{if(activeChat)loadMessages(false)},3000);setInterval(presence,15000);setInterval(pollSignals,1500)}
+
+const $ = id => document.getElementById(id);
+
+const FLAGS = [
+  "🏳️","🇸🇬","🇮🇳","🇺🇸","🇬🇧","🇨🇦","🇦🇺","🇯🇵","🇰🇷","🇨🇳",
+  "🇲🇾","🇮🇩","🇵🇭","🇹🇭","🇫🇷","🇩🇪","🇧🇷","🇳🇿","🇵🇰","🇱🇰",
+  "🇳🇵","🇧🇩","🇿🇦","🇦🇪","🇳🇬","🇺🇦","🇹🇷","🇮🇹","🇪🇸","🇲🇽","🇪🇬"
+];
+
+let chats = [];
+let activeChat = null;
+let lastId = 0;
+let users = [];
+let myFlag = "🏳️";
+let pollBusy = false;
+let typingLast = 0;
+
+let pc = null;
+let localStream = null;
+let callPeer = null;
+let callCid = null;
+let signalCursor = 0;
+let callMode = "video";
+let pendingOffer = null;
+let iceQueue = [];
+let callPollTimer = null;
+
+async function api(path, opts = {}) {
+  const headers = {
+    ...(opts.body instanceof FormData
+      ? {}
+      : { "Content-Type": "application/json" }),
+    ...(opts.headers || {})
+  };
+
+  const response = await fetch(path, {
+    ...opts,
+    headers
+  });
+
+  let data = {};
+  try {
+    data = await response.json();
+  } catch (_) {}
+
+  if (response.status === 401) {
+    location.href = "/login";
+    throw Error("Please log in again.");
+  }
+
+  if (!response.ok) {
+    throw Error(data.error || "Request failed.");
+  }
+
+  return data;
+}
+
+function toast(message) {
+  const el = $("toast");
+  if (!el) return;
+
+  el.textContent = message;
+  el.classList.add("show");
+
+  setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+function esc(value) {
+  return String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+
+function time(value) {
+  const date = new Date(value);
+  return isNaN(date)
+    ? ""
+    : date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
+}
+
+async function refreshChats() {
+  if (pollBusy) return;
+
+  pollBusy = true;
+
+  try {
+    chats = await api("/api/conversations");
+    renderChats();
+
+    if (activeChat) {
+      const updated = chats.find(c => c.id === activeChat.id);
+
+      if (updated) {
+        activeChat = updated;
+        $("chatTitle").textContent = updated.title;
+        $("chatSubtitle").textContent = updated.subtitle;
+      }
+    }
+  } catch (_) {
+    // A later refresh can recover from a temporary network failure.
+  } finally {
+    pollBusy = false;
+  }
+}
+
+function renderChats() {
+  const filter = $("searchChats").value.toLowerCase();
+
+  const filtered = chats.filter(chat =>
+    `${chat.title} ${chat.last_message}`.toLowerCase().includes(filter)
+  );
+
+  $("chatList").innerHTML = filtered.length
+    ? filtered.map(chat => `
+        <button class="chat-item ${
+          activeChat?.id === chat.id ? "selected" : ""
+        }" data-id="${chat.id}">
+          <span class="avatar ${
+            chat.is_group ? "group-avatar" : ""
+          }">${esc(chat.title.slice(0, 1).toUpperCase())}</span>
+          <span class="chat-item-copy">
+            <strong>${esc(chat.title)}</strong>
+            <span class="chat-preview">
+              ${esc(chat.last_sender ? chat.last_sender + ": " : "")}${esc(chat.last_message)}
+            </span>
+          </span>
+        </button>
+      `).join("")
+    : `<div class="empty-list">${
+        filter ? "No matching chats." : "No chats yet. Start a new chat."
+      }</div>`;
+
+  $("chatList").querySelectorAll("[data-id]").forEach(button => {
+    button.onclick = () => openChat(Number(button.dataset.id));
+  });
+}
+
+function msgHtml(message) {
+  const attachment = message.attachment
+    ? message.attachment_type === "image"
+      ? `<a href="${esc(message.attachment)}" target="_blank" rel="noopener">
+           <img class="attachment-image"
+                src="${esc(message.attachment)}"
+                loading="lazy"
+                alt="Shared image">
+         </a>`
+      : `<audio controls preload="none" src="${esc(message.attachment)}"></audio>`
+    : "";
+
+  const body = message.deleted
+    ? "<i>This message was deleted</i>"
+    : `${esc(message.body).replace(/\n/g, "<br>")}${attachment}`;
+
+  return `
+    <div class="message-row ${message.own ? "own" : ""}" data-mid="${message.id}">
+      ${!message.own
+        ? `<span class="message-sender">${esc(message.sender)}</span>`
+        : ""}
+      <div class="bubble">
+        ${body}
+        <span class="message-time">
+          ${message.edited ? "edited · " : ""}
+          ${time(message.created_at)}
+          ${message.own ? (message.read ? "✓✓" : "✓") : ""}
+        </span>
+      </div>
+      ${message.own && !message.deleted
+        ? `<div class="message-tools">
+             <button data-edit="${message.id}" data-body="${esc(message.body)}">Edit</button>
+             <button data-delete="${message.id}">Delete</button>
+           </div>`
+        : ""}
+    </div>
+  `;
+}
+
+async function loadMessages(initial = false) {
+  if (!activeChat) return;
+
+  const conversationId = activeChat.id;
+
+  try {
+    const messages = await api(
+      `/api/conversations/${conversationId}/messages?after=${initial ? 0 : lastId}`
+    );
+
+    if (!activeChat || activeChat.id !== conversationId) return;
+
+    if (initial) {
+      $("messages").innerHTML = "";
+      lastId = 0;
+    }
+
+    if (messages.length) {
+      $("messages").insertAdjacentHTML(
+        "beforeend",
+        messages.map(msgHtml).join("")
+      );
+
+      lastId = Math.max(lastId, ...messages.map(message => message.id));
+      $("messages").scrollTop = $("messages").scrollHeight;
+
+      wireMessageTools();
+    } else if (initial) {
+      $("messages").innerHTML = `
+        <div class="empty-messages">
+          ✦
+          <strong>Start the conversation</strong>
+          <p>Say hello to get things going.</p>
+        </div>
+      `;
+    }
+
+    refreshChats();
+  } catch (_) {
+    // Preserve the existing conversation if a refresh fails.
+  }
+}
+
+function wireMessageTools() {
+  $("messages").querySelectorAll("[data-edit]").forEach(button => {
+    button.onclick = async () => {
+      const body = prompt("Edit your message:", button.dataset.body);
+      if (body === null) return;
+
+      try {
+        await api(`/api/messages/${button.dataset.edit}`, {
+          method: "PATCH",
+          body: JSON.stringify({ body })
+        });
+
+        await reloadCurrent();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+  });
+
+  $("messages").querySelectorAll("[data-delete]").forEach(button => {
+    button.onclick = async () => {
+      if (!confirm("Delete this message for everyone in this chat?")) return;
+
+      try {
+        await api(`/api/messages/${button.dataset.delete}`, {
+          method: "DELETE"
+        });
+
+        await reloadCurrent();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+  });
+}
+
+async function reloadCurrent() {
+  if (!activeChat) return;
+
+  lastId = 0;
+  $("messages").innerHTML = "";
+  await loadMessages(true);
+}
+
+async function openChat(id) {
+  activeChat = chats.find(chat => chat.id === id);
+  if (!activeChat) return;
+
+  lastId = 0;
+
+  $("welcome").classList.add("hidden");
+  $("chatView").classList.remove("hidden");
+  $("chatTitle").textContent = activeChat.title;
+  $("chatSubtitle").textContent = activeChat.subtitle;
+  $("chatAvatar").textContent = activeChat.title.slice(0, 1).toUpperCase();
+
+  await loadMessages(true);
+  $("messageInput").focus();
+}
+
+async function loadUsers() {
+  users = await api("/api/users");
+
+  const userRow = user => `
+    <button class="user-option" data-user="${user.id}">
+      <span class="avatar">${esc(user.flag)}</span>
+      <span>
+        <strong>${esc(user.username)}</strong>
+        <small>${user.online ? "● Online" : "Last seen recently"}</small>
+      </span>
+      <span class="option-arrow">›</span>
+    </button>
+  `;
+
+  $("userList").innerHTML = users.length
+    ? users.map(userRow).join("")
+    : '<div class="empty-list">Ask a friend to register first.</div>';
+
+  $("groupUsers").innerHTML = users.map(user => `
+    <label class="user-option">
+      <span class="avatar">${esc(user.flag)}</span>
+      <span>
+        <strong>${esc(user.username)}</strong>
+        <small>${user.online ? "Online" : "Offline"}</small>
+      </span>
+      <input type="checkbox" value="${user.id}">
+    </label>
+  `).join("");
+
+  $("userList").querySelectorAll("[data-user]").forEach(button => {
+    button.onclick = async () => {
+      try {
+        const result = await api("/api/direct", {
+          method: "POST",
+          body: JSON.stringify({ user_id: Number(button.dataset.user) })
+        });
+
+        $("newChatDialog").close();
+        await refreshChats();
+        await openChat(result.conversation.id);
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+  });
+}
+
+$("searchChats").oninput = renderChats;
+
+$("newChatBtn").onclick = async () => {
+  try {
+    await loadUsers();
+    $("newChatDialog").showModal();
+  } catch (error) {
+    toast(error.message);
+  }
+};
+
+$("newGroupBtn").onclick = async () => {
+  try {
+    await loadUsers();
+    $("groupDialog").showModal();
+  } catch (error) {
+    toast(error.message);
+  }
+};
+
+$("closeGroup").onclick = () => $("groupDialog").close();
+
+document.querySelectorAll(".close-dialog").forEach(button => {
+  button.onclick = () => button.closest("dialog").close();
+});
+
+$("groupForm").onsubmit = async event => {
+  event.preventDefault();
+
+  try {
+    const result = await api("/api/groups", {
+      method: "POST",
+      body: JSON.stringify({
+        name: $("groupName").value,
+        user_ids: [
+          ...$("groupUsers").querySelectorAll("input:checked")
+        ].map(input => Number(input.value))
+      })
+    });
+
+    $("groupDialog").close();
+    await refreshChats();
+    await openChat(result.conversation.id);
+    toast("Group created");
+  } catch (error) {
+    toast(error.message);
+  }
+};
+
+$("messageForm").onsubmit = async event => {
+  event.preventDefault();
+
+  if (!activeChat) return;
+
+  const body = $("messageInput").value.trim();
+  const file = $("fileInput").files[0];
+
+  if (!body && !file) return;
+
+  const form = new FormData();
+  form.append("body", body);
+  if (file) form.append("file", file);
+
+  try {
+    await api(`/api/conversations/${activeChat.id}/messages`, {
+      method: "POST",
+      body: form
+    });
+
+    $("messageInput").value = "";
+    $("fileInput").value = "";
+
+    await loadMessages(false);
+  } catch (error) {
+    toast(error.message);
+  }
+};
+
+$("messageInput").onkeydown = event => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    $("messageForm").requestSubmit();
+  }
+};
+
+$("messageInput").oninput = () => {
+  typingLast = Date.now();
+  $("typingStatus").textContent = "Typing…";
+
+  setTimeout(() => {
+    if (Date.now() - typingLast > 1600) {
+      $("typingStatus").textContent = "";
+    }
+  }, 1700);
+};
+
+$("emojiBtn").onclick = () => {
+  const emojis = [
+    "😀","😂","🥹","😍","😎","😭","👍","👎","❤️","🔥",
+    "🎉","🙏","🤔","💀","✨","😴","🙌","🤝","💚","😡"
+  ];
+
+  const answer = prompt(
+    "Choose an emoji by number:\n" +
+    emojis.map((emoji, index) => `${index + 1}. ${emoji}`).join("  ")
+  );
+
+  const number = Number(answer);
+
+  if (number >= 1 && number <= emojis.length) {
+    $("messageInput").value += emojis[number - 1];
+    $("messageInput").focus();
+  }
+};
+
+async function profile() {
+  const me = await api("/api/me");
+
+  myFlag = me.flag;
+  $("myFlag").textContent = myFlag;
+  $("myAvatar").textContent = myFlag;
+
+  $("flagGrid").innerHTML = FLAGS.map(flag => `
+    <button class="flag-choice ${flag === myFlag ? "active" : ""}"
+            data-flag="${flag}">${flag}</button>
+  `).join("");
+
+  $("flagGrid").querySelectorAll("[data-flag]").forEach(button => {
+    button.onclick = async () => {
+      try {
+        const result = await api("/api/flag", {
+          method: "POST",
+          body: JSON.stringify({ flag: button.dataset.flag })
+        });
+
+        myFlag = result.flag;
+        $("myFlag").textContent = myFlag;
+        $("myAvatar").textContent = myFlag;
+        $("settingsDialog").close();
+
+        toast("Flag updated!");
+        await refreshChats();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+  });
+}
+
+$("settingsBtn").onclick = async () => {
+  try {
+    await profile();
+    $("settingsDialog").showModal();
+  } catch (error) {
+    toast(error.message);
+  }
+};
+
+$("tradeBtn").onclick = async () => {
+  try {
+    await loadUsers();
+    await loadTrades();
+    $("tradeDialog").showModal();
+  } catch (error) {
+    toast(error.message);
+  }
+};
+
+async function loadTrades() {
+  const trades = await api("/api/trades");
+
+  $("tradeCreate").innerHTML = users.map(user => `
+    <div class="trade-user">
+      <span>${esc(user.flag)} ${esc(user.username)}</span>
+      <button class="secondary" data-trade="${user.id}">Offer swap</button>
+    </div>
+  `).join("") || '<p class="tiny">No friends to trade with yet.</p>';
+
+  $("tradeCreate").querySelectorAll("[data-trade]").forEach(button => {
+    button.onclick = async () => {
+      try {
+        await api("/api/trades", {
+          method: "POST",
+          body: JSON.stringify({
+            to_user_id: Number(button.dataset.trade)
+          })
+        });
+
+        toast("Trade offer sent");
+        await loadTrades();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+  });
+
+  $("tradeList").innerHTML = trades.length
+    ? trades.map(trade => `
+        <div class="trade-card">
+          <div>
+            <strong>${trade.incoming
+              ? "From " + esc(trade.from)
+              : "To " + esc(trade.to)}</strong>
+            <p>${esc(trade.offered_flag)} ⇄ ${esc(trade.requested_flag)}
+              · ${esc(trade.status)}</p>
+          </div>
+          ${trade.incoming && trade.status === "pending"
+            ? `<button class="primary" data-accept="${trade.id}">Accept</button>
+               <button class="secondary" data-decline="${trade.id}">Decline</button>`
+            : ""}
+        </div>
+      `).join("")
+    : '<div class="empty-list">No trade requests yet.</div>';
+
+  $("tradeList").querySelectorAll("[data-accept],[data-decline]").forEach(button => {
+    button.onclick = async () => {
+      const id = button.dataset.accept || button.dataset.decline;
+      const action = button.dataset.accept ? "accept" : "decline";
+
+      try {
+        await api(`/api/trades/${id}`, {
+          method: "POST",
+          body: JSON.stringify({ action })
+        });
+
+        toast(action === "accept" ? "Flags swapped!" : "Trade declined");
+        await profile();
+        await loadTrades();
+      } catch (error) {
+        toast(error.message);
+        await loadTrades();
+      }
+    };
+  });
+}
+
+if (window.IS_ADMIN) {
+  $("adminBtn").onclick = async () => {
+    try {
+      const admins = await api("/api/admin/users");
+
+      $("adminList").innerHTML = admins.map(user => `
+        <div class="trade-user">
+          <span>${esc(user.flag)} ${esc(user.username)}</span>
+          ${user.username !== window.CURRENT_USERNAME
+            ? `<button class="secondary" data-remove="${user.id}">Remove</button>`
+            : "<small>You</small>"}
+        </div>
+      `).join("");
+
+      $("adminList").querySelectorAll("[data-remove]").forEach(button => {
+        button.onclick = async () => {
+          if (!confirm("Remove this account?")) return;
+
+          try {
+            await api(`/api/admin/users/${button.dataset.remove}`, {
+              method: "DELETE"
+            });
+
+            toast("Account removed");
+            button.closest(".trade-user").remove();
+          } catch (error) {
+            toast(error.message);
+          }
+        };
+      });
+
+      $("adminDialog").showModal();
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+}
+
+async function presence() {
+  try {
+    await api("/api/heartbeat", {
+      method: "POST",
+      body: "{}"
+    });
+  } catch (_) {}
+}
+
+/* VOICE AND VIDEO CALLS */
+
+async function setupCall(peer, mode, incoming = false, conversationId = null) {
+  if (pc) {
+    throw Error("A call is already active.");
+  }
+
+  const selectedConversationId = conversationId ?? activeChat?.id;
+
+  if (!selectedConversationId) {
+    throw Error("Open a direct chat first.");
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw Error("Microphone and camera require a secure HTTPS connection.");
+  }
+
+  callPeer = peer;
+  callMode = mode;
+  callCid = selectedConversationId;
+
+  if (!incoming) {
+    iceQueue = [];
+  }
+
+  try {
+    pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" }
+      ]
+    });
+
+    pc.ontrack = event => {
+      if (event.streams[0]) {
+        $("remoteVideo").srcObject = event.streams[0];
+      }
+    };
+
+    pc.onicecandidate = event => {
+      if (event.candidate) {
+        sendSignal("ice", event.candidate.toJSON()).catch(error => {
+          console.warn("ICE signalling failed:", error);
+        });
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc) {
+        $("callStatus").textContent = pc.connectionState;
+      }
+    };
+
+    localStream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: mode === "video"
+    });
+
+    localStream.getTracks().forEach(track => {
+      pc.addTrack(track, localStream);
+    });
+
+    $("localVideo").srcObject = localStream;
+    $("localVideo").style.display = mode === "video" ? "block" : "none";
+    $("remoteVideo").style.display = mode === "video" ? "block" : "none";
+
+    $("callTitle").textContent =
+      `${mode === "video" ? "Video" : "Voice"} call · ${peer.username}`;
+
+    $("callStatus").textContent = incoming ? "Connecting…" : "Calling…";
+
+    if (!$("callDialog").open) {
+      $("callDialog").showModal();
+    }
+
+    if (!incoming) {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // Carry the call mode separately from the SDP description.
+      await sendSignal("offer", {
+        mode,
+        description: pc.localDescription
+      });
+    }
+  } catch (error) {
+    await stopCall(false);
+    throw error;
+  }
+}
+
+async function sendSignal(kind, payload) {
+  if (!callPeer || !callCid) return;
+
+  await api("/api/call-signal", {
+    method: "POST",
+    body: JSON.stringify({
+      conversation_id: callCid,
+      to_user_id: callPeer.id,
+      kind,
+      payload
+    })
+  });
+}
+
+async function stopCall(sendHangup = true) {
+  if (sendHangup && callPeer && callCid) {
+    try {
+      await sendSignal("hangup", {});
+    } catch (_) {}
+  }
+
+  if (pc) {
+    pc.onicecandidate = null;
+    pc.close();
+    pc = null;
+  }
+
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+
+  callPeer = null;
+  callCid = null;
+  pendingOffer = null;
+  iceQueue = [];
+
+  $("callDialog").close();
+  $("remoteVideo").srcObject = null;
+  $("localVideo").srcObject = null;
+  $("acceptCallBtn").hidden = true;
+  $("rejectCallBtn").hidden = true;
+}
+
+async function startOutgoingCall(mode) {
+  if (!activeChat || activeChat.is_group) {
+    toast("Calls currently work in direct chats only.");
+    return;
+  }
+
+  let peer = users.find(user => user.username === activeChat.title);
+
+  if (!peer) {
+    await loadUsers();
+    peer = users.find(user => user.username === activeChat?.title);
+  }
+
+  if (!peer) {
+    throw Error("Friend not found. Refresh your chat list and try again.");
+  }
+
+  await setupCall(peer, mode);
+}
+
+$("callBtn").onclick = async () => {
+  try {
+    await startOutgoingCall("video");
+  } catch (error) {
+    toast("Call unavailable: " + error.message);
+  }
+};
+
+$("voiceOnlyBtn").onclick = async () => {
+  try {
+    if (pendingOffer) {
+      toast("Accept or decline the incoming call first.");
+      return;
+    }
+
+    if (pc) {
+      await stopCall(false);
+    }
+
+    await startOutgoingCall("voice");
+  } catch (error) {
+    toast("Voice call unavailable: " + error.message);
+  }
+};
+
+$("hangupBtn").onclick = () => stopCall(true);
+
+$("acceptCallBtn").onclick = async () => {
+  const incoming = pendingOffer;
+
+  if (!incoming) return;
+
+  try {
+    await setupCall(
+      incoming.peer,
+      incoming.mode,
+      true,
+      incoming.cid
+    );
+
+    await pc.setRemoteDescription(incoming.offer);
+
+    for (const candidate of iceQueue) {
+      await pc.addIceCandidate(candidate);
+    }
+    iceQueue = [];
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+
+    await sendSignal("answer", pc.localDescription);
+
+    $("acceptCallBtn").hidden = true;
+    $("rejectCallBtn").hidden = true;
+  } catch (error) {
+    toast("Could not accept call: " + error.message);
+    await stopCall(false);
+  }
+};
+
+$("rejectCallBtn").onclick = async () => {
+  const incoming = pendingOffer;
+
+  if (incoming) {
+    try {
+      await api("/api/call-signal", {
+        method: "POST",
+        body: JSON.stringify({
+          conversation_id: incoming.cid,
+          to_user_id: incoming.peer.id,
+          kind: "reject",
+          payload: {}
+        })
+      });
+    } catch (_) {}
+  }
+
+  await stopCall(false);
+};
+
+async function pollSignals() {
+  try {
+    const signals = await api(
+      `/api/call-signal?after=${signalCursor}`
+    );
+
+    for (const signal of signals) {
+      signalCursor = Math.max(signalCursor, signal.id);
+
+      if (signal.kind === "offer") {
+        if (pc || pendingOffer) continue;
+
+        const conversation = chats.find(
+          chat => chat.id === signal.conversation_id
+        );
+
+        if (!conversation) continue;
+
+        let peer = users.find(
+          user => user.id === signal.from_user_id
+        );
+
+        if (!peer) {
+          await loadUsers();
+          peer = users.find(user => user.id === signal.from_user_id);
+        }
+
+        if (!peer) continue;
+
+        const payload = signal.payload || {};
+
+        pendingOffer = {
+          peer,
+          cid: signal.conversation_id,
+          mode: payload.mode === "voice" ? "voice" : "video",
+          offer: payload.description || payload
+        };
+
+        $("callTitle").textContent = `Incoming call · ${peer.username}`;
+        $("callStatus").textContent =
+          "Accept to connect. Allow microphone/camera access.";
+
+        $("acceptCallBtn").hidden = false;
+        $("rejectCallBtn").hidden = false;
+
+        if (!$("callDialog").open) {
+          $("callDialog").showModal();
+        }
+      } else if (signal.kind === "answer" && pc) {
+        if (!pc.currentRemoteDescription) {
+          await pc.setRemoteDescription(signal.payload);
+
+          for (const candidate of iceQueue) {
+            await pc.addIceCandidate(candidate);
+          }
+
+          iceQueue = [];
+        }
+      } else if (signal.kind === "ice") {
+        if (!signal.payload) continue;
+
+        if (pc && pc.remoteDescription) {
+          try {
+            await pc.addIceCandidate(signal.payload);
+          } catch (error) {
+            console.warn("Could not add ICE candidate:", error);
+          }
+        } else {
+          // Keep early candidates until the remote description is set.
+          iceQueue.push(signal.payload);
+        }
+      } else if (["hangup", "reject"].includes(signal.kind)) {
+        toast(signal.kind === "reject" ? "Call declined" : "Call ended");
+        await stopCall(false);
+      }
+    }
+  } catch (_) {
+    // Poll again on the next interval.
+  }
+}
+
+async function start() {
+  try {
+    await profile();
+    await refreshChats();
+    await loadUsers();
+  } catch (error) {
+    console.warn("Initial loading failed:", error);
+  }
+
+  setInterval(refreshChats, 3500);
+
+  setInterval(() => {
+    if (activeChat) loadMessages(false);
+  }, 3000);
+
+  setInterval(presence, 15000);
+
+  callPollTimer = setInterval(pollSignals, 1500);
+}
+
 start();
