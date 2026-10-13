@@ -3,3 +3,6 @@
 <dialog id="groupDialog" class="modal"><form id="groupForm"><div class="modal-head"><div><h3>Create a group</h3><p class="muted">Name it and select members.</p></div><button type="button" class="icon-btn" id="closeGroup">×</button></div><label>Group name</label><input id="groupName" minlength="2" maxlength="80" placeholder="The Crew" required><div id="groupUsers" class="user-list"></div><button class="primary full">Create group</button></form></dialog>
 <dialog id="settingsDialog" class="modal"><div class="modal-head"><div><h3>Your profile & flag</h3><p class="muted">Choose one collectible flag.</p></div><button class="icon-btn close-dialog">×</button></div><div id="flagGrid" class="flag-grid"></div><p class="tiny">Your flag is shown beside your username. You can trade it with another user; accepted trades swap both flags.</p></dialog>
 <dialog id="tradeDialog" class="modal"><div class="modal-head"><div><h3>Flag exchange</h3><p class="muted">Offer your flag for another member’s flag.</p></div><button class="icon-btn close-dialog">×</button></div><div id="tradeCreate" class="user-list"></div><h4>Trade requests</h4><div id="tradeList" class="user-list"></div></dialog>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
