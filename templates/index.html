@@ -1,8 +1,199 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>6wforever · Friends chat</title><link rel="stylesheet" href="{{url_for('static',filename='style.css')}}"></head><body class="chat-page"><div class="app-shell"><aside class="sidebar"><header class="side-header"><div class="brand-line"><span class="brand-mark small">6w</span><strong>6wforever</strong><button id="settingsBtn" class="icon-btn" title="Profile and flags">⚙</button></div><div class="profile-row"><span class="avatar self" id="myAvatar">?</span><div class="profile-name"><strong>{{username}}</strong><span class="muted">Your account · <span id="myFlag">🏳️</span></span></div><form method="post" action="{{url_for('logout')}}"><button class="icon-btn" title="Log out">↪</button></form></div></header><div class="sidebar-actions"><button class="primary" id="newChatBtn">＋ New chat</button><button class="secondary" id="newGroupBtn">＋ Group</button></div><div class="search-wrap">⌕ <input id="searchChats" placeholder="Search chats"></div><div id="chatList" class="chat-list"><div class="loading">Loading chats…</div></div><div class="side-foot">Be kind to your friends · <button id="tradeBtn" class="text-btn">Flag trades</button>{% if admin %} · <button id="adminBtn" class="text-btn">Admin</button>{% endif %}</div></aside><main class="conversation"><section id="welcome" class="welcome"><div class="welcome-logo">6w</div><h2>Your people, one place.</h2><p>Choose a chat or start a conversation.</p><span class="secure-note">Lightweight chat · flags · groups</span></section><section id="chatView" class="chat-view hidden"><header class="chat-header"><span id="chatAvatar" class="avatar">?</span><div class="chat-heading"><strong id="chatTitle">Chat</strong><span id="chatSubtitle" class="muted">Conversation</span></div><button id="callBtn" class="secondary" title="Start voice/video call">📞 Call</button><span class="live-dot" title="Connected"></span></header><div id="messages" class="messages"></div><div id="typingStatus" class="typing-status"></div><form id="messageForm" class="composer"><label class="attach-btn" title="Attach photo or audio">＋<input id="fileInput" type="file" accept="image/png,image/jpeg,image/gif,image/webp,audio/*" hidden></label><button type="button" class="attach-btn" id="emojiBtn" title="Emoji">☺</button><textarea id="messageInput" rows="1" maxlength="2000" placeholder="Write a message…" required></textarea><button class="send-btn" type="submit">➤</button></form><div class="composer-hint">Enter to send · Shift + Enter for a new line · Images/audio up to 8 MB</div></section></main></div>
-<dialog id="newChatDialog" class="modal"><div class="modal-head"><div><h3>Start a conversation</h3><p class="muted">Choose a registered friend.</p></div><button class="icon-btn close-dialog">×</button></div><div id="userList" class="user-list"></div></dialog>
-<dialog id="groupDialog" class="modal"><form id="groupForm"><div class="modal-head"><div><h3>Create a group</h3><p class="muted">Name it and select members.</p></div><button type="button" class="icon-btn" id="closeGroup">×</button></div><label>Group name</label><input id="groupName" minlength="2" maxlength="80" placeholder="The Crew" required><div id="groupUsers" class="user-list"></div><button class="primary full">Create group</button></form></dialog>
-<dialog id="settingsDialog" class="modal"><div class="modal-head"><div><h3>Your profile & flag</h3><p class="muted">Choose one collectible flag.</p></div><button class="icon-btn close-dialog">×</button></div><div id="flagGrid" class="flag-grid"></div><p class="tiny">Your flag is shown beside your username. You can trade it with another user; accepted trades swap both flags.</p></dialog>
-<dialog id="tradeDialog" class="modal"><div class="modal-head"><div><h3>Flag exchange</h3><p class="muted">Offer your flag for another member’s flag.</p></div><button class="icon-btn close-dialog">×</button></div><div id="tradeCreate" class="user-list"></div><h4>Trade requests</h4><div id="tradeList" class="user-list"></div></dialog>
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>6wforever · Friends chat</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body class="chat-page">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <header class="side-header">
+        <div class="brand-line">
+          <span class="brand-mark small">6w</span>
+          <strong>6wforever</strong>
+          <button id="settingsBtn" class="icon-btn" title="Profile and flags">⚙</button>
+        </div>
+
+        <div class="profile-row">
+          <span class="avatar self" id="myAvatar">?</span>
+          <div class="profile-name">
+            <strong>{{ username }}</strong>
+            <span class="muted">Your account · <span id="myFlag">🏳️</span></span>
+          </div>
+          <form method="post" action="{{ url_for('logout') }}">
+            <button class="icon-btn" title="Log out">↪</button>
+          </form>
+        </div>
+      </header>
+
+      <div class="sidebar-actions">
+        <button class="primary" id="newChatBtn">＋ New chat</button>
+        <button class="secondary" id="newGroupBtn">＋ Group</button>
+      </div>
+
+      <div class="search-wrap">
+        ⌕ <input id="searchChats" placeholder="Search chats">
+      </div>
+
+      <div id="chatList" class="chat-list">
+        <div class="loading">Loading chats…</div>
+      </div>
+
+      <div class="side-foot">
+        Be kind to your friends ·
+        <button id="tradeBtn" class="text-btn">Flag trades</button>
+        {% if admin %}
+          · <button id="adminBtn" class="text-btn">Admin</button>
+        {% endif %}
+      </div>
+    </aside>
+
+    <main class="conversation">
+      <section id="welcome" class="welcome">
+        <div class="welcome-logo">6w</div>
+        <h2>Your people, one place.</h2>
+        <p>Choose a chat or start a conversation.</p>
+        <span class="secure-note">Lightweight chat · flags · groups</span>
+      </section>
+
+      <section id="chatView" class="chat-view hidden">
+        <header class="chat-header">
+          <span id="chatAvatar" class="avatar">?</span>
+          <div class="chat-heading">
+            <strong id="chatTitle">Chat</strong>
+            <span id="chatSubtitle" class="muted">Conversation</span>
+          </div>
+          <button id="callBtn" class="secondary" title="Start voice/video call">📞 Call</button>
+          <span class="live-dot" title="Connected"></span>
+        </header>
+
+        <div id="messages" class="messages"></div>
+        <div id="typingStatus" class="typing-status"></div>
+
+        <form id="messageForm" class="composer">
+          <label class="attach-btn" title="Attach photo or audio">
+            ＋
+            <input id="fileInput" type="file"
+              accept="image/png,image/jpeg,image/gif,image/webp,audio/*" hidden>
+          </label>
+          <button type="button" class="attach-btn" id="emojiBtn" title="Emoji">☺</button>
+          <textarea id="messageInput" rows="1" maxlength="2000"
+            placeholder="Write a message…" required></textarea>
+          <button class="send-btn" type="submit">➤</button>
+        </form>
+
+        <div class="composer-hint">
+          Enter to send · Shift + Enter for a new line · Images/audio up to 8 MB
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Start a direct chat -->
+  <dialog id="newChatDialog" class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Start a conversation</h3>
+        <p class="muted">Choose a registered friend.</p>
+      </div>
+      <button type="button" class="icon-btn close-dialog">×</button>
+    </div>
+    <div id="userList" class="user-list"></div>
+  </dialog>
+
+  <!-- Create a group -->
+  <dialog id="groupDialog" class="modal">
+    <form id="groupForm">
+      <div class="modal-head">
+        <div>
+          <h3>Create a group</h3>
+          <p class="muted">Name it and select members.</p>
+        </div>
+        <button type="button" class="icon-btn" id="closeGroup">×</button>
+      </div>
+
+      <label for="groupName">Group name</label>
+      <input id="groupName" minlength="2" maxlength="80"
+        placeholder="The Crew" required>
+
+      <div id="groupUsers" class="user-list"></div>
+      <button class="primary full" type="submit">Create group</button>
+    </form>
+  </dialog>
+
+  <!-- Profile and flags -->
+  <dialog id="settingsDialog" class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Your profile &amp; flag</h3>
+        <p class="muted">Choose one collectible flag.</p>
+      </div>
+      <button type="button" class="icon-btn close-dialog">×</button>
+    </div>
+    <div id="flagGrid" class="flag-grid"></div>
+    <p class="tiny">
+      Your flag is shown beside your username. You can trade it with another user;
+      accepted trades swap both flags.
+    </p>
+  </dialog>
+
+  <!-- Flag trading -->
+  <dialog id="tradeDialog" class="modal">
+    <div class="modal-head">
+      <div>
+        <h3>Flag exchange</h3>
+        <p class="muted">Offer your flag for another member’s flag.</p>
+      </div>
+      <button type="button" class="icon-btn close-dialog">×</button>
+    </div>
+    <div id="tradeCreate" class="user-list"></div>
+    <h4>Trade requests</h4>
+    <div id="tradeList" class="user-list"></div>
+  </dialog>
+
+  <!-- Voice and video calls -->
+  <dialog id="callDialog" class="modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="callTitle">Call</h3>
+        <p id="callStatus" class="muted">Connecting…</p>
+      </div>
+      <button type="button" class="icon-btn" id="hangupBtn">✕</button>
+    </div>
+
+    <video id="remoteVideo" autoplay playsinline></video>
+    <video id="localVideo" autoplay muted playsinline></video>
+
+    <div class="modal-actions">
+      <button type="button" class="secondary" id="voiceOnlyBtn">Voice call</button>
+      <button type="button" class="primary" id="acceptCallBtn" hidden>Accept</button>
+      <button type="button" class="secondary" id="rejectCallBtn" hidden>Decline</button>
+    </div>
+  </dialog>
+
+  <!-- Admin panel -->
+  <dialog id="adminDialog" class="modal">
+    <div class="modal-head">
+      <h3>Admin · Manage users</h3>
+      <button type="button" class="icon-btn close-dialog">×</button>
+    </div>
+    <div id="adminList" class="user-list"></div>
+  </dialog>
+
+  <!-- Status notifications -->
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- Values used by the JavaScript -->
+  <script>
+    window.IS_ADMIN = {{ 'true' if admin else 'false' }};
+    window.CURRENT_USERNAME = {{ username | tojson }};
+  </script>
+
+  <!-- Main application JavaScript -->
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
