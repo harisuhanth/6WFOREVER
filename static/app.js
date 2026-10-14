@@ -14,6 +14,7 @@ let users = [];
 let myFlag = "🏳️";
 let pollBusy = false;
 let typingLast = 0;
+let profilePic = null;
 
 let pc = null;
 let localStream = null;
@@ -35,7 +36,8 @@ async function api(path, opts = {}) {
 
   const response = await fetch(path, {
     ...opts,
-    headers
+    headers,
+    credentials: "same-origin"
   });
 
   let data = {};
@@ -66,13 +68,27 @@ function toast(message) {
 }
 
 function esc(value) {
-  return String(value ?? "").replace(/[&<>"']/g, char => ({
+  return String(value ?? "").replace(/[&<>\"']/g, char => ({
     "&": "&amp;",
     "<": "&lt;",
     ">": "&gt;",
     '"': "&quot;",
     "'": "&#39;"
   })[char]);
+}
+
+function displayAvatar(value, fallbackEl) {
+  if (!value) {
+    fallbackEl.textContent = "?";
+    return;
+  }
+
+  const isUrl = /^https?:\/\//i.test(value) || value.startsWith("/");
+  if (isUrl) {
+    fallbackEl.innerHTML = `<img src="${esc(value)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;">`;
+  } else {
+    fallbackEl.textContent = value;
+  }
 }
 
 function time(value) {
@@ -96,7 +112,6 @@ async function refreshChats() {
 
     if (activeChat) {
       const updated = chats.find(c => c.id === activeChat.id);
-
       if (updated) {
         activeChat = updated;
         $("chatTitle").textContent = updated.title;
@@ -112,30 +127,19 @@ async function refreshChats() {
 
 function renderChats() {
   const filter = $("searchChats").value.toLowerCase();
-
-  const filtered = chats.filter(chat =>
-    `${chat.title} ${chat.last_message}`.toLowerCase().includes(filter)
-  );
+  const filtered = chats.filter(chat => `${chat.title} ${chat.last_message}`.toLowerCase().includes(filter));
 
   $("chatList").innerHTML = filtered.length
     ? filtered.map(chat => `
-        <button class="chat-item ${
-          activeChat?.id === chat.id ? "selected" : ""
-        }" data-id="${chat.id}">
-          <span class="avatar ${
-            chat.is_group ? "group-avatar" : ""
-          }">${esc(chat.title.slice(0, 1).toUpperCase())}</span>
+        <button class="chat-item ${activeChat?.id === chat.id ? "selected" : ""}" data-id="${chat.id}">
+          <span class="avatar ${chat.is_group ? "group-avatar" : ""}">${esc(chat.title.slice(0, 1).toUpperCase())}</span>
           <span class="chat-item-copy">
             <strong>${esc(chat.title)}</strong>
-            <span class="chat-preview">
-              ${esc(chat.last_sender ? chat.last_sender + ": " : "")}${esc(chat.last_message)}
-            </span>
+            <span class="chat-preview">${esc(chat.last_sender ? chat.last_sender + ": " : "")}${esc(chat.last_message)}</span>
           </span>
         </button>
       `).join("")
-    : `<div class="empty-list">${
-        filter ? "No matching chats." : "No chats yet. Start a new chat."
-      }</div>`;
+    : `<div class="empty-list">${filter ? "No matching chats." : "No chats yet. Start a new chat."}</div>`;
 
   $("chatList").querySelectorAll("[data-id]").forEach(button => {
     button.onclick = () => openChat(Number(button.dataset.id));
@@ -145,12 +149,7 @@ function renderChats() {
 function msgHtml(message) {
   const attachment = message.attachment
     ? message.attachment_type === "image"
-      ? `<a href="${esc(message.attachment)}" target="_blank" rel="noopener">
-           <img class="attachment-image"
-                src="${esc(message.attachment)}"
-                loading="lazy"
-                alt="Shared image">
-         </a>`
+      ? `<a href="${esc(message.attachment)}" target="_blank" rel="noopener"><img class="attachment-image" src="${esc(message.attachment)}" loading="lazy" alt="Shared image"></a>`
       : `<audio controls preload="none" src="${esc(message.attachment)}"></audio>`
     : "";
 
@@ -160,9 +159,7 @@ function msgHtml(message) {
 
   return `
     <div class="message-row ${message.own ? "own" : ""}" data-mid="${message.id}">
-      ${!message.own
-        ? `<span class="message-sender">${esc(message.sender)}</span>`
-        : ""}
+      ${!message.own ? `<span class="message-sender">${esc(message.sender)}</span>` : ""}
       <div class="bubble">
         ${body}
         <span class="message-time">
@@ -187,9 +184,7 @@ async function loadMessages(initial = false) {
   const conversationId = activeChat.id;
 
   try {
-    const messages = await api(
-      `/api/conversations/${conversationId}/messages?after=${initial ? 0 : lastId}`
-    );
+    const messages = await api(`/api/conversations/${conversationId}/messages?after=${initial ? 0 : lastId}`);
 
     if (!activeChat || activeChat.id !== conversationId) return;
 
@@ -199,14 +194,9 @@ async function loadMessages(initial = false) {
     }
 
     if (messages.length) {
-      $("messages").insertAdjacentHTML(
-        "beforeend",
-        messages.map(msgHtml).join("")
-      );
-
+      $("messages").insertAdjacentHTML("beforeend", messages.map(msgHtml).join(""));
       lastId = Math.max(lastId, ...messages.map(message => message.id));
       $("messages").scrollTop = $("messages").scrollHeight;
-
       wireMessageTools();
     } else if (initial) {
       $("messages").innerHTML = `
@@ -235,7 +225,6 @@ function wireMessageTools() {
           method: "PATCH",
           body: JSON.stringify({ body })
         });
-
         await reloadCurrent();
       } catch (error) {
         toast(error.message);
@@ -251,7 +240,6 @@ function wireMessageTools() {
         await api(`/api/messages/${button.dataset.delete}`, {
           method: "DELETE"
         });
-
         await reloadCurrent();
       } catch (error) {
         toast(error.message);
@@ -262,7 +250,6 @@ function wireMessageTools() {
 
 async function reloadCurrent() {
   if (!activeChat) return;
-
   lastId = 0;
   $("messages").innerHTML = "";
   await loadMessages(true);
@@ -273,7 +260,6 @@ async function openChat(id) {
   if (!activeChat) return;
 
   lastId = 0;
-
   $("welcome").classList.add("hidden");
   $("chatView").classList.remove("hidden");
   $("chatTitle").textContent = activeChat.title;
@@ -289,7 +275,7 @@ async function loadUsers() {
 
   const userRow = user => `
     <button class="user-option" data-user="${user.id}">
-      <span class="avatar">${esc(user.flag)}</span>
+      <span class="avatar">${user.profile_pic ? `<img src="${esc(user.profile_pic)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;">` : esc(user.flag)}</span>
       <span>
         <strong>${esc(user.username)}</strong>
         <small>${user.online ? "● Online" : "Last seen recently"}</small>
@@ -304,7 +290,7 @@ async function loadUsers() {
 
   $("groupUsers").innerHTML = users.map(user => `
     <label class="user-option">
-      <span class="avatar">${esc(user.flag)}</span>
+      <span class="avatar">${user.profile_pic ? `<img src="${esc(user.profile_pic)}" alt="avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;">` : esc(user.flag)}</span>
       <span>
         <strong>${esc(user.username)}</strong>
         <small>${user.online ? "Online" : "Offline"}</small>
@@ -320,7 +306,6 @@ async function loadUsers() {
           method: "POST",
           body: JSON.stringify({ user_id: Number(button.dataset.user) })
         });
-
         $("newChatDialog").close();
         await refreshChats();
         await openChat(result.conversation.id);
@@ -365,9 +350,7 @@ $("groupForm").onsubmit = async event => {
       method: "POST",
       body: JSON.stringify({
         name: $("groupName").value,
-        user_ids: [
-          ...$("groupUsers").querySelectorAll("input:checked")
-        ].map(input => Number(input.value))
+        user_ids: [...$("groupUsers").querySelectorAll("input:checked")].map(input => Number(input.value))
       })
     });
 
@@ -399,10 +382,8 @@ $("messageForm").onsubmit = async event => {
       method: "POST",
       body: form
     });
-
     $("messageInput").value = "";
     $("fileInput").value = "";
-
     await loadMessages(false);
   } catch (error) {
     toast(error.message);
@@ -428,16 +409,8 @@ $("messageInput").oninput = () => {
 };
 
 $("emojiBtn").onclick = () => {
-  const emojis = [
-    "😀","😂","🥹","😍","😎","😭","👍","👎","❤️","🔥",
-    "🎉","🙏","🤔","💀","✨","😴","🙌","🤝","💚","😡"
-  ];
-
-  const answer = prompt(
-    "Choose an emoji by number:\n" +
-    emojis.map((emoji, index) => `${index + 1}. ${emoji}`).join("  ")
-  );
-
+  const emojis = ["😀","😂","🥹","😍","😎","😭","👍","👎","❤️","🔥","🎉","🙏","🤔","💀","✨","😴","🙌","🤝","💚","😡"];
+  const answer = prompt("Choose an emoji by number:\n" + emojis.map((emoji, index) => `${index + 1}. ${emoji}`).join("  "));
   const number = Number(answer);
 
   if (number >= 1 && number <= emojis.length) {
@@ -449,13 +422,16 @@ $("emojiBtn").onclick = () => {
 async function profile() {
   const me = await api("/api/me");
 
-  myFlag = me.flag;
+  myFlag = me.flag || "🏳️";
+  profilePic = me.profile_pic || null;
   $("myFlag").textContent = myFlag;
-  $("myAvatar").textContent = myFlag;
+  displayAvatar(profilePic, $("myAvatar"));
+
+  $("profilePreview").textContent = "";
+  displayAvatar(profilePic, $("profilePreview"));
 
   $("flagGrid").innerHTML = FLAGS.map(flag => `
-    <button class="flag-choice ${flag === myFlag ? "active" : ""}"
-            data-flag="${flag}">${flag}</button>
+    <button class="flag-choice ${flag === myFlag ? "active" : ""}" data-flag="${flag}">${flag}</button>
   `).join("");
 
   $("flagGrid").querySelectorAll("[data-flag]").forEach(button => {
@@ -468,9 +444,8 @@ async function profile() {
 
         myFlag = result.flag;
         $("myFlag").textContent = myFlag;
-        $("myAvatar").textContent = myFlag;
+        displayAvatar(profilePic, $("myAvatar"));
         $("settingsDialog").close();
-
         toast("Flag updated!");
         await refreshChats();
       } catch (error) {
@@ -484,6 +459,49 @@ $("settingsBtn").onclick = async () => {
   try {
     await profile();
     $("settingsDialog").showModal();
+  } catch (error) {
+    toast(error.message);
+  }
+};
+
+$("uploadProfileBtn").onclick = async () => {
+  const file = $("profilePictureInput").files[0];
+  if (!file) {
+    toast("Choose a profile picture first.");
+    return;
+  }
+
+  const form = new FormData();
+  form.append("file", file);
+
+  try {
+    const result = await api("/api/profile/picture", {
+      method: "POST",
+      body: form
+    });
+    profilePic = result.profile_pic;
+    displayAvatar(profilePic, $("myAvatar"));
+    displayAvatar(profilePic, $("profilePreview"));
+    $("profilePictureInput").value = "";
+    toast("Profile picture updated!");
+  } catch (error) {
+    toast(error.message);
+  }
+};
+
+$("passwordForm").onsubmit = async event => {
+  event.preventDefault();
+  const oldPassword = $("oldPassword").value;
+  const newPassword = $("newPassword").value;
+
+  try {
+    await api("/api/change-password", {
+      method: "POST",
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+    });
+    $("oldPassword").value = "";
+    $("newPassword").value = "";
+    toast("Password updated.");
   } catch (error) {
     toast(error.message);
   }
@@ -514,11 +532,8 @@ async function loadTrades() {
       try {
         await api("/api/trades", {
           method: "POST",
-          body: JSON.stringify({
-            to_user_id: Number(button.dataset.trade)
-          })
+          body: JSON.stringify({ to_user_id: Number(button.dataset.trade) })
         });
-
         toast("Trade offer sent");
         await loadTrades();
       } catch (error) {
@@ -531,11 +546,8 @@ async function loadTrades() {
     ? trades.map(trade => `
         <div class="trade-card">
           <div>
-            <strong>${trade.incoming
-              ? "From " + esc(trade.from)
-              : "To " + esc(trade.to)}</strong>
-            <p>${esc(trade.offered_flag)} ⇄ ${esc(trade.requested_flag)}
-              · ${esc(trade.status)}</p>
+            <strong>${trade.incoming ? "From " + esc(trade.from) : "To " + esc(trade.to)}</strong>
+            <p>${esc(trade.offered_flag)} ⇄ ${esc(trade.requested_flag)} · ${esc(trade.status)}</p>
           </div>
           ${trade.incoming && trade.status === "pending"
             ? `<button class="primary" data-accept="${trade.id}">Accept</button>
@@ -574,24 +586,51 @@ if (window.IS_ADMIN) {
 
       $("adminList").innerHTML = admins.map(user => `
         <div class="trade-user">
-          <span>${esc(user.flag)} ${esc(user.username)}</span>
+          <span>${user.profile_pic ? `<img src="${esc(user.profile_pic)}" alt="avatar" style="width:28px;height:28px;object-fit:cover;border-radius:50%;">` : esc(user.flag)} ${esc(user.username)}</span>
+          ${!user.is_admin && user.username !== window.CURRENT_USERNAME
+            ? `<button class="secondary" data-promote="${user.id}">Promote</button>`
+            : user.is_admin && user.username !== window.CURRENT_USERNAME
+              ? `<button class="secondary" data-demote="${user.id}">Demote</button>`
+              : "<small>You</small>"}
           ${user.username !== window.CURRENT_USERNAME
-            ? `<button class="secondary" data-remove="${user.id}">Remove</button>`
-            : "<small>You</small>"}
+            ? `<button class="secondary" data-impersonate="${user.id}">Impersonate</button>`
+            : ""}
         </div>
       `).join("");
 
-      $("adminList").querySelectorAll("[data-remove]").forEach(button => {
+      $("adminList").querySelectorAll("[data-promote]").forEach(button => {
         button.onclick = async () => {
-          if (!confirm("Remove this account?")) return;
-
           try {
-            await api(`/api/admin/users/${button.dataset.remove}`, {
-              method: "DELETE"
-            });
+            await api(`/api/admin/users/${button.dataset.promote}/promote`, { method: "POST", body: JSON.stringify({}) });
+            toast("User promoted");
+            $("adminBtn").click();
+          } catch (error) {
+            toast(error.message);
+          }
+        };
+      });
 
-            toast("Account removed");
-            button.closest(".trade-user").remove();
+      $("adminList").querySelectorAll("[data-demote]").forEach(button => {
+        button.onclick = async () => {
+          try {
+            await api(`/api/admin/users/${button.dataset.demote}/demote`, { method: "POST", body: JSON.stringify({}) });
+            toast("User demoted");
+            $("adminBtn").click();
+          } catch (error) {
+            toast(error.message);
+          }
+        };
+      });
+
+      $("adminList").querySelectorAll("[data-impersonate]").forEach(button => {
+        button.onclick = async () => {
+          try {
+            await api("/api/admin/impersonate/start", {
+              method: "POST",
+              body: JSON.stringify({ target_id: Number(button.dataset.impersonate) })
+            });
+            toast("Impersonation started");
+            location.reload();
           } catch (error) {
             toast(error.message);
           }
@@ -607,11 +646,45 @@ if (window.IS_ADMIN) {
 
 async function presence() {
   try {
-    await api("/api/heartbeat", {
-      method: "POST",
-      body: "{}"
-    });
+    await api("/api/heartbeat", { method: "POST", body: "{}" });
   } catch (_) {}
+}
+
+// SSE notifications for active sessions
+function connectNotifications() {
+  const es = new EventSource("/stream");
+  es.addEventListener("message", event => {
+    try {
+      const data = JSON.parse(event.data);
+      toast(data.from ? `${data.from}: ${data.body}` : "New notification");
+    } catch (_) {
+      toast("New notification");
+    }
+  });
+  es.onerror = () => {
+    setTimeout(connectNotifications, 1500);
+  };
+}
+
+// Handle impersonation banner + stop button
+async function setupImpersonation() {
+  const me = await api("/api/me");
+  if (me.impersonated_by) {
+    const banner = document.createElement("div");
+    banner.className = "toast impersonation-banner";
+    banner.innerHTML = `Impersonating ${esc(me.username)} · <button id="stopImpersonationBtn" type="button">Stop</button>`;
+    banner.style.display = "block";
+    document.body.appendChild(banner);
+
+    $("stopImpersonationBtn").onclick = async () => {
+      try {
+        await api("/api/admin/impersonate/stop", { method: "POST", body: JSON.stringify({}) });
+        location.reload();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+  }
 }
 
 /* VOICE AND VIDEO CALLS */
@@ -641,9 +714,7 @@ async function setupCall(peer, mode, incoming = false, conversationId = null) {
 
   try {
     pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" }
-      ]
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
     });
 
     pc.ontrack = event => {
@@ -679,9 +750,7 @@ async function setupCall(peer, mode, incoming = false, conversationId = null) {
     $("localVideo").style.display = mode === "video" ? "block" : "none";
     $("remoteVideo").style.display = mode === "video" ? "block" : "none";
 
-    $("callTitle").textContent =
-      `${mode === "video" ? "Video" : "Voice"} call · ${peer.username}`;
-
+    $("callTitle").textContent = `${mode === "video" ? "Video" : "Voice"} call · ${peer.username}`;
     $("callStatus").textContent = incoming ? "Connecting…" : "Calling…";
 
     if (!$("callDialog").open) {
@@ -691,12 +760,7 @@ async function setupCall(peer, mode, incoming = false, conversationId = null) {
     if (!incoming) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-
-      // Carry the call mode separately from the SDP description.
-      await sendSignal("offer", {
-        mode,
-        description: pc.localDescription
-      });
+      await sendSignal("offer", { mode, description: pc.localDescription });
     }
   } catch (error) {
     await stopCall(false);
@@ -706,15 +770,9 @@ async function setupCall(peer, mode, incoming = false, conversationId = null) {
 
 async function sendSignal(kind, payload) {
   if (!callPeer || !callCid) return;
-
   await api("/api/call-signal", {
     method: "POST",
-    body: JSON.stringify({
-      conversation_id: callCid,
-      to_user_id: callPeer.id,
-      kind,
-      payload
-    })
+    body: JSON.stringify({ conversation_id: callCid, to_user_id: callPeer.id, kind, payload })
   });
 }
 
@@ -755,7 +813,6 @@ async function startOutgoingCall(mode) {
   }
 
   let peer = users.find(user => user.username === activeChat.title);
-
   if (!peer) {
     await loadUsers();
     peer = users.find(user => user.username === activeChat?.title);
@@ -782,11 +839,9 @@ $("voiceOnlyBtn").onclick = async () => {
       toast("Accept or decline the incoming call first.");
       return;
     }
-
     if (pc) {
       await stopCall(false);
     }
-
     await startOutgoingCall("voice");
   } catch (error) {
     toast("Voice call unavailable: " + error.message);
@@ -797,29 +852,18 @@ $("hangupBtn").onclick = () => stopCall(true);
 
 $("acceptCallBtn").onclick = async () => {
   const incoming = pendingOffer;
-
   if (!incoming) return;
 
   try {
-    await setupCall(
-      incoming.peer,
-      incoming.mode,
-      true,
-      incoming.cid
-    );
-
+    await setupCall(incoming.peer, incoming.mode, true, incoming.cid);
     await pc.setRemoteDescription(incoming.offer);
-
     for (const candidate of iceQueue) {
       await pc.addIceCandidate(candidate);
     }
     iceQueue = [];
-
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
-
     await sendSignal("answer", pc.localDescription);
-
     $("acceptCallBtn").hidden = true;
     $("rejectCallBtn").hidden = true;
   } catch (error) {
@@ -830,7 +874,6 @@ $("acceptCallBtn").onclick = async () => {
 
 $("rejectCallBtn").onclick = async () => {
   const incoming = pendingOffer;
-
   if (incoming) {
     try {
       await api("/api/call-signal", {
@@ -850,35 +893,24 @@ $("rejectCallBtn").onclick = async () => {
 
 async function pollSignals() {
   try {
-    const signals = await api(
-      `/api/call-signal?after=${signalCursor}`
-    );
+    const signals = await api(`/api/call-signal?after=${signalCursor}`);
 
     for (const signal of signals) {
       signalCursor = Math.max(signalCursor, signal.id);
 
       if (signal.kind === "offer") {
         if (pc || pendingOffer) continue;
-
-        const conversation = chats.find(
-          chat => chat.id === signal.conversation_id
-        );
-
+        const conversation = chats.find(chat => chat.id === signal.conversation_id);
         if (!conversation) continue;
 
-        let peer = users.find(
-          user => user.id === signal.from_user_id
-        );
-
+        let peer = users.find(user => user.id === signal.from_user_id);
         if (!peer) {
           await loadUsers();
           peer = users.find(user => user.id === signal.from_user_id);
         }
-
         if (!peer) continue;
 
         const payload = signal.payload || {};
-
         pendingOffer = {
           peer,
           cid: signal.conversation_id,
@@ -887,9 +919,7 @@ async function pollSignals() {
         };
 
         $("callTitle").textContent = `Incoming call · ${peer.username}`;
-        $("callStatus").textContent =
-          "Accept to connect. Allow microphone/camera access.";
-
+        $("callStatus").textContent = "Accept to connect. Allow microphone/camera access.";
         $("acceptCallBtn").hidden = false;
         $("rejectCallBtn").hidden = false;
 
@@ -916,7 +946,6 @@ async function pollSignals() {
             console.warn("Could not add ICE candidate:", error);
           }
         } else {
-          // Keep early candidates until the remote description is set.
           iceQueue.push(signal.payload);
         }
       } else if (["hangup", "reject"].includes(signal.kind)) {
@@ -934,18 +963,17 @@ async function start() {
     await profile();
     await refreshChats();
     await loadUsers();
+    await setupImpersonation();
+    connectNotifications();
   } catch (error) {
     console.warn("Initial loading failed:", error);
   }
 
   setInterval(refreshChats, 3500);
-
   setInterval(() => {
     if (activeChat) loadMessages(false);
   }, 3000);
-
   setInterval(presence, 15000);
-
   callPollTimer = setInterval(pollSignals, 1500);
 }
 
