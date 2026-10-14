@@ -5,11 +5,21 @@ import json
 from datetime import datetime, timezone
 from functools import wraps
 
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import (
+    Flask, render_template, request, redirect, url_for, session,
+    jsonify, Response, stream_with_context
+)
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_, and_
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+
+# Optional web-push support
+try:
+    from pywebpush import webpush, WebPushException
+    HAS_PYWEBPUSH = True
+except Exception:
+    HAS_PYWEBPUSH = False
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get(
@@ -33,8 +43,7 @@ ALLOWED = {
     "mp3", "wav", "ogg", "m4a", "webm"
 }
 
-# Lightweight native emoji flags.
-# Each flag can belong to only one account.
+# Lightweight native emoji flags (legacy fallback).
 FLAGS = [
     "🇸🇬", "🇮🇳", "🇺🇸", "🇬🇧", "🇨🇦",
     "🇦🇺", "🇯🇵", "🇰🇷", "🇨🇳", "🇲🇾",
@@ -44,6 +53,17 @@ FLAGS = [
     "🇹🇷", "🇮🇹", "🇪🇸", "🇲🇽", "🇪🇬",
     "🏳️"
 ]
+
+# In-memory notification queues for Server-Sent Events (MVP).
+# Note: This is ephemeral and not suitable for multi-worker deployments.
+user_queues = {}
+
+
+def notify_user(user_id, event, payload):
+    """Append a notification to a user's SSE queue."""
+    q = user_queues.setdefault(user_id, [])
+    q.append({"event": event, "payload": payload})
+
 
 db = SQLAlchemy(app)
 
@@ -87,7 +107,9 @@ class User(db.Model):
         db.String(24), unique=True, nullable=False, index=True
     )
     password_hash = db.Column(db.String(255), nullable=False)
+    # legacy flag kept as fallback; prefer profile_pic if present
     flag = db.Column(db.String(8), nullable=False, default="🏳️")
+    profile_pic = db.Column(db.String(500))
     last_seen = db.Column(db.Float, default=0, nullable=False)
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(
@@ -173,6 +195,33 @@ class CallSignal(db.Model):
     kind = db.Column(db.String(20), nullable=False)
     payload = db.Column(db.Text, nullable=False, default="{}")
     created_at = db.Column(db.Float, default=time.time, nullable=False)
+
+
+class AuditLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    actor_id = db.Column(db.Integer)
+    target_id = db.Column(db.Integer, nullable=True)
+    action = db.Column(db.String(128))
+    details = db.Column(db.Text)
+    ip = db.Column(db.String(64))
+    created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
+
+
+class PushSubscription(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    endpoint = db.Column(db.Text, nullable=False)
+    p256dh = db.Column(db.String(255))
+    auth = db.Column(db.String(255))
+    created_at = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False
+    )
 
 
 def me():
@@ -403,16 +452,24 @@ def heartbeat():
 @login_required
 def api_me():
     u = me()
+    impersonator = None
+    if session.get("impersonator_id"):
+        admin = db.session.get(User, session.get("impersonator_id"))
+        impersonator = admin.username if admin else None
+
     return jsonify(
         username=u.username,
+        profile_pic=u.profile_pic,
         flag=u.flag,
-        is_admin=u.is_admin
+        is_admin=u.is_admin,
+        impersonated_by=impersonator
     )
 
 
 @app.post("/api/flag")
 @login_required
 def set_flag():
+    # legacy: keep available but prefer profile pictures in UI
     u = me()
     data = request.get_json(silent=True) or {}
     flag = data.get("flag", "")
@@ -448,6 +505,7 @@ def users():
         {
             "id": x.id,
             "username": x.username,
+            "profile_pic": x.profile_pic,
             "flag": x.flag,
             "online": time.time() - x.last_seen < 45
         }
@@ -618,6 +676,15 @@ def send_message(cid):
     db.session.add(m)
     db.session.commit()
 
+    # Notify other members via SSE queues
+    for member_user in c.members:
+        if member_user.id != u.id:
+            notify_user(member_user.id, "message", {
+                "conversation_id": c.id,
+                "from": u.username,
+                "body": (body[:120] + "…") if len(body) > 120 else body
+            })
+
     return jsonify(id=m.id), 201
 
 
@@ -778,6 +845,8 @@ def admin_users():
             "id": x.id,
             "username": x.username,
             "flag": x.flag,
+            "profile_pic": x.profile_pic,
+            "is_admin": x.is_admin,
             "created_at": x.created_at.isoformat()
         }
         for x in User.query.order_by(User.id).all()
@@ -812,6 +881,96 @@ def admin_delete_user(uid):
     ).delete()
 
     db.session.delete(target)
+    db.session.commit()
+
+    # audit
+    db.session.add(AuditLog(actor_id=u.id, target_id=uid, action="delete_user", details="deleted user"))
+    db.session.commit()
+
+    return jsonify(ok=True)
+
+
+@app.post("/api/admin/users/<int:uid>/promote")
+@login_required
+def admin_promote(uid):
+    u = me()
+    if not u.is_admin:
+        return jsonify(error="Admin only."), 403
+
+    target = db.session.get(User, uid)
+    if not target:
+        return jsonify(error="User not found."), 404
+
+    target.is_admin = True
+    db.session.commit()
+
+    db.session.add(AuditLog(actor_id=u.id, target_id=uid, action="promote", details="promoted to admin"))
+    db.session.commit()
+
+    return jsonify(ok=True)
+
+
+@app.post("/api/admin/users/<int:uid>/demote")
+@login_required
+def admin_demote(uid):
+    u = me()
+    if not u.is_admin:
+        return jsonify(error="Admin only."), 403
+
+    target = db.session.get(User, uid)
+    if not target:
+        return jsonify(error="User not found."), 404
+
+    if target.id == u.id:
+        return jsonify(error="You cannot demote yourself."), 400
+
+    target.is_admin = False
+    db.session.commit()
+
+    db.session.add(AuditLog(actor_id=u.id, target_id=uid, action="demote", details="demoted from admin"))
+    db.session.commit()
+
+    return jsonify(ok=True)
+
+
+@app.post("/api/admin/impersonate/start")
+@login_required
+def start_impersonation():
+    u = me()
+    if not u.is_admin:
+        return jsonify(error="Admin only."), 403
+
+    data = request.get_json(silent=True) or {}
+    try:
+        target_id = int(data.get("target_id"))
+    except (TypeError, ValueError):
+        return jsonify(error="Choose a valid user."), 400
+
+    target = db.session.get(User, target_id)
+    if not target or target.id == u.id:
+        return jsonify(error="Cannot impersonate this user."), 400
+
+    # Default policy: do not allow impersonating other admins
+    if target.is_admin:
+        return jsonify(error="Cannot impersonate other admins."), 403
+
+    session["impersonator_id"] = u.id
+    session["user_id"] = target.id
+    db.session.add(AuditLog(actor_id=u.id, target_id=target.id, action="impersonate_start", details="started impersonation"))
+    db.session.commit()
+
+    return jsonify(ok=True)
+
+
+@app.post("/api/admin/impersonate/stop")
+@login_required
+def stop_impersonation():
+    if not session.get("impersonator_id"):
+        return jsonify(error="Not impersonating."), 400
+
+    admin_id = session.pop("impersonator_id")
+    session["user_id"] = admin_id
+    db.session.add(AuditLog(actor_id=admin_id, action="impersonate_stop", details="stopped impersonation"))
     db.session.commit()
 
     return jsonify(ok=True)
@@ -892,6 +1051,118 @@ def get_signals():
 
     db.session.commit()
     return jsonify(result)
+
+
+@app.post("/api/profile/picture")
+@login_required
+def upload_profile_picture():
+    u = me()
+    file = request.files.get("file")
+
+    if not file:
+        return jsonify(error="No file"), 400
+
+    try:
+        path, kind = save_upload(file)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+
+    if kind != "image":
+        return jsonify(error="Only images allowed for profile picture."), 400
+
+    u.profile_pic = path
+    db.session.commit()
+
+    return jsonify(profile_pic=u.profile_pic)
+
+
+@app.post("/api/change-password")
+@login_required
+def change_password():
+    u = me()
+    data = request.get_json(silent=True) or {}
+    old = data.get("old_password")
+    new = data.get("new_password")
+
+    if not old or not new:
+        return jsonify(error="Provide old and new password."), 400
+
+    if not check_password_hash(u.password_hash, old):
+        return jsonify(error="Old password is incorrect."), 400
+
+    if len(new) < 8:
+        return jsonify(error="New password must be at least 8 characters."), 400
+
+    u.password_hash = generate_password_hash(new)
+    db.session.commit()
+
+    return jsonify(ok=True)
+
+
+@app.post("/api/subscribe")
+@login_required
+def subscribe_push():
+    if not HAS_PYWEBPUSH:
+        return jsonify(error="Server-side web-push support not available."), 500
+
+    u = me()
+    data = request.get_json(silent=True) or {}
+
+    endpoint = data.get("endpoint")
+    keys = data.get("keys", {})
+
+    if not endpoint:
+        return jsonify(error="Invalid subscription."), 400
+
+    sub = PushSubscription(
+        user_id=u.id,
+        endpoint=endpoint,
+        p256dh=keys.get("p256dh"),
+        auth=keys.get("auth")
+    )
+
+    db.session.add(sub)
+    db.session.commit()
+
+    return jsonify(ok=True)
+
+
+@app.post("/api/unsubscribe")
+@login_required
+def unsubscribe_push():
+    u = me()
+    data = request.get_json(silent=True) or {}
+    endpoint = data.get("endpoint")
+
+    if not endpoint:
+        return jsonify(error="Invalid unsubscribe."), 400
+
+    PushSubscription.query.filter_by(user_id=u.id, endpoint=endpoint).delete()
+    db.session.commit()
+
+    return jsonify(ok=True)
+
+
+@app.get("/stream")
+@login_required
+def stream():
+    u = me()
+
+    def gen():
+        # Long-poll style generator; yields any queued events then waits.
+        last_index = 0
+        while True:
+            q = user_queues.get(u.id, [])
+            if q:
+                # send all and clear
+                while q:
+                    item = q.pop(0)
+                    data = json.dumps(item["payload"])
+                    yield f"event: {item['event']}\n"
+                    yield f"data: {data}\n\n"
+            time.sleep(1)
+
+    return Response(stream_with_context(gen()), mimetype="text/event-stream")
 
 
 with app.app_context():
