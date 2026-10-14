@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -129,15 +128,39 @@
   <dialog id="settingsDialog" class="modal">
     <div class="modal-head">
       <div>
-        <h3>Your profile &amp; flag</h3>
-        <p class="muted">Choose one collectible flag.</p>
+        <h3>Your profile &amp; account</h3>
+        <p class="muted">Update avatar and password.</p>
       </div>
       <button type="button" class="icon-btn close-dialog">×</button>
     </div>
+
+    <div class="user-option">
+      <span id="profilePreview" class="avatar self">?</span>
+      <span>
+        <strong>Profile picture</strong>
+        <small>PNG, JPG, GIF, WebP</small>
+      </span>
+    </div>
+    <input id="profilePictureInput" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
+    <button id="uploadProfileBtn" class="primary full" type="button">Upload profile picture</button>
+
+    <hr>
+    <h4>Change password</h4>
+    <form id="passwordForm">
+      <label for="oldPassword">Current password</label>
+      <input id="oldPassword" type="password" placeholder="Current password" required>
+
+      <label for="newPassword">New password</label>
+      <input id="newPassword" type="password" placeholder="New password" required>
+
+      <button class="primary full" type="submit">Update password</button>
+    </form>
+
+    <hr>
+    <h4>Legacy flag picker</h4>
     <div id="flagGrid" class="flag-grid"></div>
     <p class="tiny">
-      Your flag is shown beside your username. You can trade it with another user;
-      accepted trades swap both flags.
+      Profile pictures are preferred; the flag is still kept as a fallback for older flows.
     </p>
   </dialog>
 
