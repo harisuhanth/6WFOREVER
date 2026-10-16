@@ -369,6 +369,40 @@ def register():
     return render_template("auth.html", mode="register", error=error)
 
 
+@app.post("/api/change-password")
+@login_required
+def change_password():
+    u = me()
+    data = request.get_json(silent=True) or {}
+
+    current_password = data.get("current_password", "")
+    new_password = data.get("new_password", "")
+
+    if not isinstance(current_password, str) or not isinstance(new_password, str):
+        return jsonify(error="Invalid password input."), 400
+
+    if not check_password_hash(u.password_hash, current_password):
+        return jsonify(error="Current password is incorrect."), 400
+
+    if len(new_password) < 8:
+        return jsonify(error="New password must be at least 8 characters."), 400
+
+    if len(new_password) > 128:
+        return jsonify(error="New password is too long."), 400
+
+    if check_password_hash(u.password_hash, new_password):
+        return jsonify(error="Choose a different password."), 400
+
+    u.password_hash = generate_password_hash(new_password)
+    db.session.commit()
+
+    session.clear()
+    session["user_id"] = u.id
+
+    return jsonify(ok=True, message="Password changed successfully.")
+
+
+
 @app.post("/logout")
 @login_required
 def logout():

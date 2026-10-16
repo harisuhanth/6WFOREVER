@@ -135,6 +135,44 @@
       <button type="button" class="icon-btn close-dialog">×</button>
     </div>
     <div id="flagGrid" class="flag-grid"></div>
+    <hr>
+
+<h4>Change Password</h4>
+<form id="changePasswordForm">
+  <label for="currentPassword">Current password</label>
+  <input
+    type="password"
+    id="currentPassword"
+    name="current_password"
+    autocomplete="current-password"
+    required
+  >
+
+  <label for="newPassword">New password</label>
+  <input
+    type="password"
+    id="newPassword"
+    name="new_password"
+    autocomplete="new-password"
+    minlength="8"
+    maxlength="128"
+    required
+  >
+
+  <label for="confirmPassword">Confirm new password</label>
+  <input
+    type="password"
+    id="confirmPassword"
+    name="confirm_password"
+    autocomplete="new-password"
+    minlength="8"
+    maxlength="128"
+    required
+  >
+
+  <button type="submit" class="primary">Change Password</button>
+  <p id="passwordMessage" class="tiny" role="status"></p>
+</form>
     <p class="tiny">
       Your flag is shown beside your username. You can trade it with another user;
       accepted trades swap both flags.

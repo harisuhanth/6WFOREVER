@@ -950,3 +950,52 @@ async function start() {
 }
 
 start();
+// Change password
+const changePasswordForm = $("changePasswordForm");
+
+if (changePasswordForm) {
+  changePasswordForm.addEventListener("submit", async event => {
+    event.preventDefault();
+
+    const currentPassword = $("currentPassword").value;
+    const newPassword = $("newPassword").value;
+    const confirmPassword = $("confirmPassword").value;
+    const message = $("passwordMessage");
+    const submitButton = changePasswordForm.querySelector(
+      'button[type="submit"]'
+    );
+
+    message.textContent = "";
+
+    if (newPassword !== confirmPassword) {
+      message.textContent = "The new passwords do not match.";
+      return;
+    }
+
+    if (newPassword.length < 8 || newPassword.length > 128) {
+      message.textContent =
+        "Your new password must be between 8 and 128 characters.";
+      return;
+    }
+
+    submitButton.disabled = true;
+
+    try {
+      const result = await api("/api/change-password", {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword
+        })
+      });
+
+      changePasswordForm.reset();
+      message.textContent = result.message || "Password changed successfully.";
+      toast("Password changed successfully.");
+    } catch (error) {
+      message.textContent = error.message || "Could not change password.";
+    } finally {
+      submitButton.disabled = false;
+    }
+  });
+}
