@@ -1,1 +1,96 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{ 'Log in' if mode=='login' else 'Register' }} · 6wforever</title><link rel="stylesheet" href="{{url_for('static',filename='style.css')}}"></head><body class="auth-page"><main class="auth-card"><div class="brand-mark">6w</div><h1>6wforever</h1><p class="muted">{{'Welcome back. Your people are here.' if mode=='login' else 'Create an account and meet your friends.'}}</p>{% if error %}<div class="notice error">{{error}}</div>{% endif %}<form method="post" class="auth-form"><label for="username">Username</label><input id="username" name="username" minlength="3" maxlength="24" autocomplete="username" required><label for="password">Password</label><input id="password" name="password" type="password" minlength="8" autocomplete="{{'current-password' if mode=='login' else 'new-password'}}" required><button class="primary full">{{'Log in' if mode=='login' else 'Create account'}}</button></form><p class="switch">{{'New here?' if mode=='login' else 'Already registered?'}} <a href="{{url_for('register' if mode=='login' else 'login')}}">{{'Create an account' if mode=='login' else 'Log in'}}</a></p><p class="tiny">Independent friends chat. Never reuse an important password.</p></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ 'Log in' if mode == 'login' else 'Register' }} · 6wforever</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="auth-page">
+    <main class="auth-card">
+        <div class="brand-mark">6w</div>
+        <h1>6wforever</h1>
+
+        <p class="muted">
+            {{ 'Welcome back. Your people are here.' if mode == 'login' else 'Create an account and meet your friends.' }}
+        </p>
+
+        {% if error %}
+            <div class="notice error">{{ error }}</div>
+        {% endif %}
+
+        <form method="post" class="auth-form">
+            <label for="username">Username</label>
+            <input
+                id="username"
+                name="username"
+                minlength="3"
+                maxlength="24"
+                autocomplete="username"
+                required
+            >
+
+            <label for="password">Password</label>
+            <input
+                id="password"
+                name="password"
+                type="password"
+                minlength="8"
+                maxlength="128"
+                autocomplete="{{ 'current-password' if mode == 'login' else 'new-password' }}"
+                required
+            >
+
+            {% if mode == 'register' %}
+                <label for="security_question">Security question</label>
+                <select id="security_question" name="security_question" required>
+                    <option value="">Choose a question</option>
+                    <option value="What was the name of your first school?">
+                        What was the name of your first school?
+                    </option>
+                    <option value="What is the name of your favourite fictional character?">
+                        What is the name of your favourite fictional character?
+                    </option>
+                    <option value="What was your childhood nickname?">
+                        What was your childhood nickname?
+                    </option>
+                </select>
+
+                <label for="security_answer">Security answer</label>
+                <input
+                    id="security_answer"
+                    name="security_answer"
+                    minlength="2"
+                    maxlength="100"
+                    autocomplete="off"
+                    required
+                >
+                <p class="tiny">
+                    Remember your answer. You will need it if you forget your password.
+                </p>
+            {% endif %}
+
+            <button class="primary full">
+                {{ 'Log in' if mode == 'login' else 'Create account' }}
+            </button>
+        </form>
+
+        {% if mode == 'login' %}
+            <p class="switch">
+                <a href="{{ url_for('forgot_password') }}">Forgot password?</a>
+            </p>
+        {% endif %}
+
+        <p class="switch">
+            {{ 'New here?' if mode == 'login' else 'Already registered?' }}
+            <a href="{{ url_for('register' if mode == 'login' else 'login') }}">
+                {{ 'Create an account' if mode == 'login' else 'Log in' }}
+            </a>
+        </p>
+
+        <p class="tiny">
+            Independent friends chat. Never reuse an important password.
+        </p>
+    </main>
+</body>
+</html>

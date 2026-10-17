@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timezone
 from functools import wraps
 
+
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_, and_
@@ -13,8 +14,8 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get(
-    "SECRET_KEY", "replace-this-secret-before-deploy"
-)
+        "SECRET_KEY", "replace-this-secret-before-deploy"
+    )
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 
 dburl = os.environ.get("DATABASE_URL", "sqlite:///6wforever.db")
@@ -95,6 +96,23 @@ class User(db.Model):
         default=lambda: datetime.now(timezone.utc),
         nullable=False
     )
+
+
+
+class SecurityQuestion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        unique=True,
+        nullable=False
+    )
+    question = db.Column(db.String(200), nullable=False)
+    answer_hash = db.Column(db.String(255), nullable=False)
+    failed_attempts = db.Column(
+        db.Integer, default=0, nullable=False
+    )
+    locked_until = db.Column(db.Float, default=0, nullable=False)
 
 
 class Conversation(db.Model):
@@ -303,9 +321,19 @@ def login():
         ):
             session.clear()
             session["user_id"] = user.id
+
             user.last_seen = time.time()
             db.session.commit()
+
+            recovery = SecurityQuestion.query.filter_by(
+                user_id=user.id
+            ).first()
+
+            if not recovery:
+                return redirect(url_for("setup_security_question"))
+
             return redirect(url_for("home"))
+
 
         error = "Username or password is incorrect."
 
@@ -322,14 +350,30 @@ def register():
     if request.method == "POST":
         username = request.form.get("username", "").strip().lower()
         password = request.form.get("password", "")
+        security_question = request.form.get("security_question", "").strip()
+        security_answer = " ".join(
+            request.form.get("security_answer", "").casefold().split()
+        )
+
+        allowed_questions = {
+            "What was the name of your first school?",
+            "What is the name of your favourite fictional character?",
+            "What was your childhood nickname?"
+        }
 
         if not 3 <= len(username) <= 24 or not username.replace(
             "_", ""
         ).isalnum():
             error = "Username: 3–24 letters, numbers or underscores."
 
-        elif len(password) < 8:
-            error = "Password must be at least 8 characters."
+        elif not 8 <= len(password) <= 128:
+            error = "Password must be 8–128 characters."
+
+        elif security_question not in allowed_questions:
+            error = "Please choose a valid security question."
+
+        elif not 2 <= len(security_answer) <= 100:
+            error = "Security answer must be 2–100 characters."
 
         elif User.query.filter_by(username=username).first():
             error = "That username is already taken."
@@ -347,9 +391,7 @@ def register():
                     "Ask the site admin to add more flags."
                 )
                 return render_template(
-                    "auth.html",
-                    mode="register",
-                    error=error
+                    "auth.html", mode="register", error=error
                 ), 400
 
             u = User(
@@ -360,6 +402,14 @@ def register():
             )
 
             db.session.add(u)
+            db.session.flush()
+
+            recovery = SecurityQuestion(
+                user_id=u.id,
+                question=security_question,
+                answer_hash=generate_password_hash(security_answer)
+            )
+            db.session.add(recovery)
             db.session.commit()
 
             session.clear()
@@ -367,6 +417,143 @@ def register():
             return redirect(url_for("home"))
 
     return render_template("auth.html", mode="register", error=error)
+
+
+
+
+@app.route("/setup-security-question", methods=["GET", "POST"])
+def setup_security_question():
+    user = me()
+
+    if not user:
+        return redirect(url_for("login"))
+
+    recovery = SecurityQuestion.query.filter_by(
+        user_id=user.id
+    ).first()
+
+    if recovery:
+        return redirect(url_for("home"))
+
+    allowed_questions = {
+        "What was the name of your first school?",
+        "What is the name of your favourite fictional character?",
+        "What was your childhood nickname?"
+    }
+
+    error = ""
+
+    if request.method == "POST":
+        question = request.form.get("security_question", "").strip()
+        answer = " ".join(
+            request.form.get("security_answer", "").casefold().split()
+        )
+
+        if question not in allowed_questions:
+            error = "Please choose a valid security question."
+        elif not 2 <= len(answer) <= 100:
+            error = "Your answer must be 2–100 characters."
+        else:
+            recovery = SecurityQuestion(
+                user_id=user.id,
+                question=question,
+                answer_hash=generate_password_hash(answer)
+            )
+            db.session.add(recovery)
+            db.session.commit()
+
+            return redirect(url_for("home"))
+
+    return render_template(
+        "setup_security_question.html",
+        error=error
+    )
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    error = ""
+    username = ""
+    question = None
+
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        username = request.form.get("username", "").strip().lower()
+
+        user = User.query.filter_by(username=username).first()
+        recovery = (
+            SecurityQuestion.query.filter_by(user_id=user.id).first()
+            if user else None
+        )
+
+        if action == "lookup":
+            if recovery:
+                question = recovery.question
+            else:
+                error = (
+                    "No recovery question is available for that account. "
+                    "Contact the site administrator."
+                )
+
+        elif action == "reset":
+            answer = " ".join(
+                request.form.get("security_answer", "").casefold().split()
+            )
+            new_password = request.form.get("new_password", "")
+
+            if not user or not recovery:
+                error = "Unable to verify those details."
+
+            elif recovery.locked_until > time.time():
+                error = (
+                    "Too many incorrect answers. "
+                    "Please try again after 15 minutes."
+                )
+                question = recovery.question
+
+            elif not check_password_hash(
+                recovery.answer_hash, answer
+            ):
+                recovery.failed_attempts += 1
+
+                if recovery.failed_attempts >= 5:
+                    recovery.failed_attempts = 0
+                    recovery.locked_until = time.time() + 900
+                    error = (
+                        "Too many incorrect answers. "
+                        "Please try again after 15 minutes."
+                    )
+                else:
+                    error = "The security answer is incorrect."
+
+                db.session.commit()
+                question = recovery.question
+
+            elif not 8 <= len(new_password) <= 128:
+                error = "New password must be 8–128 characters."
+                question = recovery.question
+
+            elif check_password_hash(user.password_hash, new_password):
+                error = "Choose a different password."
+                question = recovery.question
+
+            else:
+                user.password_hash = generate_password_hash(new_password)
+                recovery.failed_attempts = 0
+                recovery.locked_until = 0
+                db.session.commit()
+
+                return redirect(url_for("login"))
+
+    return render_template(
+        "forgot_password.html",
+        error=error,
+        username=username,
+        question=question
+    )
+
+
+
 
 
 @app.post("/api/change-password")

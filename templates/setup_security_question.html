@@ -1,0 +1,47 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Secure your account · 6WFOREVER</title>
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="auth-page">
+<main class="auth-card">
+    <h1>Secure your account</h1>
+    <p class="muted">
+        Choose a security question before continuing to 6WFOREVER.
+    </p>
+
+    {% if error %}
+        <div class="notice error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" class="auth-form">
+        <label for="security_question">Security question</label>
+        <select id="security_question" name="security_question" required>
+            <option value="">Choose a question</option>
+            <option value="What was the name of your first school?">
+                What was the name of your first school?
+            </option>
+            <option value="What is the name of your favourite fictional character?">
+                What is the name of your favourite fictional character?
+            </option>
+            <option value="What was your childhood nickname?">
+                What was your childhood nickname?
+            </option>
+        </select>
+
+        <label for="security_answer">Your answer</label>
+        <input id="security_answer" name="security_answer"
+               minlength="2" maxlength="100" autocomplete="off" required>
+
+        <button class="primary full" type="submit">
+            Save and continue
+        </button>
+    </form>
+</main>
+</body>
+</html>
