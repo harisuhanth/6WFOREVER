@@ -1066,3 +1066,27 @@ a {
     transition-duration: .01ms !important;
   }
 }
+
+/* WhatsApp-style chat date separators */
+.date-separator {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin: 18px 0;
+    text-align: center;
+    clear: both;
+}
+
+.date-separator span {
+    display: inline-block;
+    padding: 6px 13px;
+    border-radius: 8px;
+    background: #e2f0e8;
+    color: #334b40;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
+}

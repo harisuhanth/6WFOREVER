@@ -1,4 +1,3 @@
-
 const $ = id => document.getElementById(id);
 
 const FLAGS = [
@@ -79,11 +78,67 @@ function time(value) {
   const date = new Date(value);
   return isNaN(date)
     ? ""
-    : date.toLocaleTimeString([], {
+    : date.toLocaleTimeString("en-SG", { timeZone: "Asia/Singapore",
         hour: "2-digit",
         minute: "2-digit"
       });
 }
+
+
+
+
+
+function dateHeading(value) {
+  const date = new Date(value);
+
+  if (isNaN(date)) return "";
+
+  const day = new Intl.DateTimeFormat("en-SG", {
+    timeZone: "Asia/Singapore",
+    weekday: "long"
+  }).format(date);
+
+  const parts = new Intl.DateTimeFormat("en-SG", {
+    timeZone: "Asia/Singapore",
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  }).formatToParts(date);
+
+  const dayNumber = Number(parts.find(p => p.type === "day").value);
+  const month = parts.find(p => p.type === "month").value;
+  const year = parts.find(p => p.type === "year").value;
+
+  const suffix =
+    dayNumber % 100 >= 11 && dayNumber % 100 <= 13
+      ? "th"
+      : dayNumber % 10 === 1
+        ? "st"
+        : dayNumber % 10 === 2
+          ? "nd"
+          : dayNumber % 10 === 3
+            ? "rd"
+            : "th";
+
+  return `${day}, ${dayNumber}${suffix} ${month} ${year}`;
+}
+
+function singaporeDateKey(value) {
+  const date = new Date(value);
+
+  if (isNaN(date)) return "";
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Singapore",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+
+
+
 
 async function refreshChats() {
   if (pollBusy) return;
@@ -159,7 +214,7 @@ function msgHtml(message) {
     : `${esc(message.body).replace(/\n/g, "<br>")}${attachment}`;
 
   return `
-    <div class="message-row ${message.own ? "own" : ""}" data-mid="${message.id}">
+    <div class="message-row ${message.own ? "own" : ""}" data-mid="${message.id}" data-date-key="${singaporeDateKey(message.created_at)}">
       ${!message.own
         ? `<span class="message-sender">${esc(message.sender)}</span>`
         : ""}
@@ -199,10 +254,23 @@ async function loadMessages(initial = false) {
     }
 
     if (messages.length) {
-      $("messages").insertAdjacentHTML(
-        "beforeend",
-        messages.map(msgHtml).join("")
-      );
+      const container = $("messages");
+
+      messages.forEach(message => {
+        const currentDate = singaporeDateKey(message.created_at);
+        const rows = container.querySelectorAll(".message-row");
+        const previousRow = rows.length ? rows[rows.length - 1] : null;
+        const previousDate = previousRow?.dataset.dateKey || "";
+
+        if (currentDate && currentDate !== previousDate) {
+          container.insertAdjacentHTML(
+            "beforeend",
+            `<div class="date-separator"><span>${esc(dateHeading(message.created_at))}</span></div>`
+          );
+        }
+
+        container.insertAdjacentHTML("beforeend", msgHtml(message));
+      });
 
       lastId = Math.max(lastId, ...messages.map(message => message.id));
       $("messages").scrollTop = $("messages").scrollHeight;
