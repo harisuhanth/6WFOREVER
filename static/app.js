@@ -1,10 +1,47 @@
 const $ = id => document.getElementById(id);
 
-const FLAGS = [
-  "🏳️","🇸🇬","🇮🇳","🇺🇸","🇬🇧","🇨🇦","🇦🇺","🇯🇵","🇰🇷","🇨🇳",
-  "🇲🇾","🇮🇩","🇵🇭","🇹🇭","🇫🇷","🇩🇪","🇧🇷","🇳🇿","🇵🇰","🇱🇰",
-  "🇳🇵","🇧🇩","🇿🇦","🇦🇪","🇳🇬","🇺🇦","🇹🇷","🇮🇹","🇪🇸","🇲🇽","🇪🇬"
-];
+const FLAG_CODES = ["ad", "ae", "af", "ag", "ai", "al", "am", "ao", "aq", "ar", "as", "at", "au", "aw", "ax", "az", "ba", "bb", "bd", "be", "bf", "bg", "bh", "bi", "bj", "bl", "bm", "bn", "bo", "bq", "br", "bs", "bt", "bv", "bw", "by", "bz", "ca", "cc", "cd", "cf", "cg", "ch", "ci", "ck", "cl", "cm", "cn", "co", "cr", "cu", "cv", "cw", "cx", "cy", "cz", "de", "dj", "dk", "dm", "do", "dz", "ec", "ee", "eg", "eh", "er", "es", "et", "eu", "fi", "fj", "fk", "fm", "fo", "fr", "ga", "gb", "gd", "ge", "gf", "gg", "gh", "gi", "gl", "gm", "gn", "gp", "gq", "gr", "gs", "gt", "gu", "gw", "gy", "hk", "hm", "hn", "hr", "ht", "hu", "id", "ie", "il", "im", "in", "io", "iq", "ir", "is", "it", "je", "jm", "jo", "jp", "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky", "kz", "la", "lb", "lc", "li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "mc", "md", "me", "mf", "mg", "mh", "mk", "ml", "mm", "mn", "mo", "mp", "mq", "mr", "ms", "mt", "mu", "mv", "mw", "mx", "my", "mz", "na", "nc", "ne", "nf", "ng", "ni", "nl", "no", "np", "nr", "nu", "nz", "om", "pa", "pe", "pf", "pg", "ph", "pk", "pl", "pm", "pn", "pr", "ps", "pt", "pw", "py", "qa", "re", "ro", "rs", "ru", "rw", "sa", "sb", "sc", "sd", "se", "sg", "sh", "si", "sj", "sk", "sl", "sm", "sn", "so", "sr", "ss", "st", "sv", "sx", "sy", "sz", "tc", "td", "tf", "tg", "th", "tj", "tk", "tl", "tm", "tn", "to", "tr", "tt", "tv", "tw", "tz", "ua", "ug", "um", "us", "uy", "uz", "va", "vc", "ve", "vg", "vi", "vn", "vu", "wf", "ws", "xk", "ye", "yt", "za", "zm", "zw", "ac"];
+function flagEmoji(code) {
+  if (code === "white") return "🏳️";
+  return [...code.toUpperCase()].map(c =>
+    String.fromCodePoint(c.charCodeAt(0) + 127397)
+  ).join("");
+}
+const FLAGS = ["ad", "ae", "af", "ag", "ai", "al", "am", "ao", "aq", "ar", "as", "at", "au", "aw", "ax", "az", "ba", "bb", "bd", "be", "bf", "bg", "bh", "bi", "bj", "bl", "bm", "bn", "bo", "bq", "br", "bs", "bt", "bv", "bw", "by", "bz", "ca", "cc", "cd", "cf", "cg", "ch", "ci", "ck", "cl", "cm", "cn", "co", "cr", "cu", "cv", "cw", "cx", "cy", "cz", "de", "dj", "dk", "dm", "do", "dz", "ec", "ee", "eg", "eh", "er", "es", "et", "eu", "fi", "fj", "fk", "fm", "fo", "fr", "ga", "gb", "gd", "ge", "gf", "gg", "gh", "gi", "gl", "gm", "gn", "gp", "gq", "gr", "gs", "gt", "gu", "gw", "gy", "hk", "hm", "hn", "hr", "ht", "hu", "id", "ie", "il", "im", "in", "io", "iq", "ir", "is", "it", "je", "jm", "jo", "jp", "ke", "kg", "kh", "ki", "km", "kn", "kp", "kr", "kw", "ky", "kz", "la", "lb", "lc", "li", "lk", "lr", "ls", "lt", "lu", "lv", "ly", "ma", "mc", "md", "me", "mf", "mg", "mh", "mk", "ml", "mm", "mn", "mo", "mp", "mq", "mr", "ms", "mt", "mu", "mv", "mw", "mx", "my", "mz", "na", "nc", "ne", "nf", "ng", "ni", "nl", "no", "np", "nr", "nu", "nz", "om", "pa", "pe", "pf", "pg", "ph", "pk", "pl", "pm", "pn", "pr", "ps", "pt", "pw", "py", "qa", "re", "ro", "rs", "ru", "rw", "sa", "sb", "sc", "sd", "se", "sg", "sh", "si", "sj", "sk", "sl", "sm", "sn", "so", "sr", "ss", "st", "sv", "sx", "sy", "sz", "tc", "td", "tf", "tg", "th", "tj", "tk", "tl", "tm", "tn", "to", "tr", "tt", "tv", "tw", "tz", "ua", "ug", "um", "us", "uy", "uz", "va", "vc", "ve", "vg", "vi", "vn", "vu", "wf", "ws", "xk", "ye", "yt", "za", "zm", "zw", "ac"].map(flagEmoji);
+FLAGS.push("🏳️");
+
+function flagCode(flag) {
+  const points = [...String(flag)].map(ch => ch.codePointAt(0));
+  const regional = points.filter(n => n >= 0x1F1E6 && n <= 0x1F1FF);
+  if (regional.length === 2) {
+    return regional.map(n => String.fromCharCode(n - 127397)).join("").toLowerCase();
+  }
+  return "";
+}
+
+function flagName(flag) {
+  const code = flagCode(flag);
+  if (!code) return "Other flag";
+  try {
+    return new Intl.DisplayNames(["en"], {type: "region"}).of(code.toUpperCase()) || code.toUpperCase();
+  } catch (_) {
+    return code.toUpperCase();
+  }
+}
+
+function flagHtml(flag, size = 26) {
+  const code = flagCode(flag);
+  if (!code) return `<span class="flag-fallback" style="font-size:${size}px">${esc(flag)}</span>`;
+  const name = flagName(flag);
+  const emoji = esc(flag);
+  return `<span class="flag-image-wrap" title="${esc(name)}">
+    <img src="https://flagcdn.com/w40/${code}.png"
+         width="${size}" alt="${esc(name)}"
+         loading="lazy"
+         onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex'">
+    <span class="flag-fallback" style="display:none;font-size:${size}px">${emoji}</span>
+  </span>`;
+}
 
 let chats = [];
 let activeChat = null;
@@ -357,7 +394,7 @@ async function loadUsers() {
 
   const userRow = user => `
     <button class="user-option" data-user="${user.id}">
-      <span class="avatar">${esc(user.flag)}</span>
+      <span class="avatar">${flagHtml(user.flag, 24)}</span>
       <span>
         <strong>${esc(user.username)}</strong>
         <small>${user.online ? "● Online" : "Last seen recently"}</small>
@@ -372,7 +409,7 @@ async function loadUsers() {
 
   $("groupUsers").innerHTML = users.map(user => `
     <label class="user-option">
-      <span class="avatar">${esc(user.flag)}</span>
+      <span class="avatar">${flagHtml(user.flag, 24)}</span>
       <span>
         <strong>${esc(user.username)}</strong>
         <small>${user.online ? "Online" : "Offline"}</small>
@@ -516,36 +553,53 @@ $("emojiBtn").onclick = () => {
 
 async function profile() {
   const me = await api("/api/me");
-
   myFlag = me.flag;
-  $("myFlag").textContent = myFlag;
-  $("myAvatar").textContent = myFlag;
+  $("myFlag").innerHTML = flagHtml(myFlag, 22);
+  $("myAvatar").innerHTML = flagHtml(myFlag, 28);
 
-  $("flagGrid").innerHTML = FLAGS.map(flag => `
-    <button class="flag-choice ${flag === myFlag ? "active" : ""}"
-            data-flag="${flag}">${flag}</button>
-  `).join("");
+  const search = $("flagSearch");
+  const renderFlags = () => {
+    const query = (search?.value || "").trim().toLowerCase();
+    const filtered = FLAGS.filter(flag =>
+      flagName(flag).toLowerCase().includes(query) ||
+      flagCode(flag).includes(query)
+    );
 
-  $("flagGrid").querySelectorAll("[data-flag]").forEach(button => {
-    button.onclick = async () => {
-      try {
-        const result = await api("/api/flag", {
-          method: "POST",
-          body: JSON.stringify({ flag: button.dataset.flag })
-        });
+    $("flagGrid").innerHTML = filtered.map(flag => `
+      <button type="button"
+              class="flag-choice ${flag === myFlag ? "active" : ""}"
+              data-flag="${esc(flag)}"
+              title="${esc(flagName(flag))}">
+        ${flagHtml(flag, 28)}
+        <small>${esc(flagName(flag))}</small>
+      </button>
+    `).join("");
 
-        myFlag = result.flag;
-        $("myFlag").textContent = myFlag;
-        $("myAvatar").textContent = myFlag;
-        $("settingsDialog").close();
+    $("flagGrid").querySelectorAll("[data-flag]").forEach(button => {
+      button.onclick = async () => {
+        try {
+          const result = await api("/api/flag", {
+            method: "POST",
+            body: JSON.stringify({flag: button.dataset.flag})
+          });
+          myFlag = result.flag;
+          $("myFlag").innerHTML = flagHtml(myFlag, 22);
+          $("myAvatar").innerHTML = flagHtml(myFlag, 28);
+          $("settingsDialog").close();
+          toast("Flag updated!");
+          await refreshChats();
+        } catch (error) {
+          toast(error.message);
+        }
+      };
+    });
+  };
 
-        toast("Flag updated!");
-        await refreshChats();
-      } catch (error) {
-        toast(error.message);
-      }
-    };
-  });
+  if (search && !search.dataset.bound) {
+    search.addEventListener("input", renderFlags);
+    search.dataset.bound = "true";
+  }
+  renderFlags();
 }
 
 $("settingsBtn").onclick = async () => {
@@ -572,7 +626,7 @@ async function loadTrades() {
 
   $("tradeCreate").innerHTML = users.map(user => `
     <div class="trade-user">
-      <span>${esc(user.flag)} ${esc(user.username)}</span>
+      <span>${flagHtml(user.flag, 22)} ${esc(user.username)}</span>
       <button class="secondary" data-trade="${user.id}">Offer swap</button>
     </div>
   `).join("") || '<p class="tiny">No friends to trade with yet.</p>';
@@ -602,7 +656,7 @@ async function loadTrades() {
             <strong>${trade.incoming
               ? "From " + esc(trade.from)
               : "To " + esc(trade.to)}</strong>
-            <p>${esc(trade.offered_flag)} ⇄ ${esc(trade.requested_flag)}
+            <p>${flagHtml(trade.offered_flag, 22)} ⇄ ${flagHtml(trade.requested_flag, 22)}
               · ${esc(trade.status)}</p>
           </div>
           ${trade.incoming && trade.status === "pending"
@@ -642,7 +696,7 @@ if (window.IS_ADMIN) {
 
       $("adminList").innerHTML = admins.map(user => `
         <div class="trade-user">
-          <span>${esc(user.flag)} ${esc(user.username)}</span>
+          <span>${flagHtml(user.flag, 22)} ${esc(user.username)}</span>
           ${user.username !== window.CURRENT_USERNAME
             ? `<button class="secondary" data-remove="${user.id}">Remove</button>`
             : "<small>You</small>"}
