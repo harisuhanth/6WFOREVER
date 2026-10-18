@@ -1392,3 +1392,6 @@ if __name__ == "__main__":
         debug=False,
         port=int(os.environ.get("PORT", 5000))
     )
+
+
+#Python code to run the application : python app.py
