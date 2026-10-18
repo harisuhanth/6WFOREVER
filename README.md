@@ -40,3 +40,8 @@ To keep `https://6wforever.onrender.com`, the existing Render service that owns 
 - Uploaded files are stored on the web service's local filesystem. Render's filesystem can be ephemeral, so files may disappear after redeploy/restart. Use object storage for durable uploads.
 - Read receipts are simplified for small group chats.
 - This is a feature-rich starter, not a hardened WhatsApp replacement. Before public launch add CSRF protection, rate limits, moderation/reporting, account recovery, private object storage, call abuse controls, and review security. No end-to-end encryption is provided.
+
+
+
+
+
